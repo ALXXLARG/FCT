@@ -76,7 +76,7 @@ cd(path01);
 addpath(genpath([path01 '\myfunc\'])); % add dir of .m files
 
 % root Dir
-rmdir([path01 '\data\'], 's');
+% rmdir([path01 '\data\'], 's');
 mkdir([path01 '\data\']);
 rootDir = [path01 '\data\']; % root Dir
 
