@@ -55,20 +55,20 @@ Cfg.SliceTiming.SliceNumber=slicenum; % set number of slices
 Cfg.SliceTiming.SliceOrder=sliceorder; % set slice order
 Cfg.SliceTiming.ReferenceSlice=refslice; % set reference slice
 %###############################################################%
-list=dir([pwd,'\preprocess\FunImg\']);
-list(1:2)=[];
-if p_removed>1
-    for i=1:length(list)
-        tmplist=dir([pwd,'\preprocess\FunImg\',list(i).name,'\*.nii']);
-        nii=load_untouch_nii([pwd,'\preprocess\FunImg\',list(i).name,'\',tmplist(1).name]);
-        nii.hdr.dime.dim(5)=nii.hdr.dime.dim(5)-p_removed;
-        img=nii.img;
-        img(:,:,:,1:p_removed)=[];
-        nii.img=img;
-        save_untouch_nii(nii,[pwd,'\preprocess\FunImg\',list(i).name,'\',tmplist(1).name]);
-    end
-    Cfg.TimePoints=Cfg.TimePoints-p_removed;
-end
+% list=dir([pwd,'\preprocess\FunImg\']);
+% list(1:2)=[];
+% if p_removed>1
+%     for i=1:length(list)
+%         tmplist=dir([pwd,'\preprocess\FunImg\',list(i).name,'\*.nii']);
+%         nii=load_untouch_nii([pwd,'\preprocess\FunImg\',list(i).name,'\',tmplist(1).name]);
+%         nii.hdr.dime.dim(5)=nii.hdr.dime.dim(5)-p_removed;
+%         img=nii.img;
+%         img(:,:,:,1:p_removed)=[];
+%         nii.img=img;
+%         save_untouch_nii(nii,[pwd,'\preprocess\FunImg\',list(i).name,'\',tmplist(1).name]);
+%     end
+%     Cfg.TimePoints=Cfg.TimePoints-p_removed;
+% end
 save prepro_saved.mat Cfg;
 DPARSFA_run('prepro_saved.mat');
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% add dir of .m files
@@ -76,12 +76,22 @@ cd(path01);
 addpath(genpath([path01 '\myfunc\'])); % add dir of .m files
 
 % root Dir
-rmdir([path01 '\data\'], 's');
+% rmdir([path01 '\data\'], 's');
 mkdir([path01 '\data\']);
 rootDir = [path01 '\data\']; % root Dir
 
 copyfile([path01, '\preprocess\FunImgARCWD\'],[path01 '\data\'])
-reslice_nii([path01 '\preprocess\Masks\AllResampled_BrainMask_05_91x109x91.nii'],[path01 '\brainmask.nii'],[2 2 2]);
+
+%%
+flags = struct('mask', false, 'mean', false, 'interp', 1, 'which', 1, 'wrap', [0 0 0], 'prefix', 'r');
+path_brod = [path01 '\atlas\rBrodmann_YCG.nii'];
+path_mask = [path01 '\preprocess\Masks\AllResampled_BrainMask_05_91x109x91.nii'];
+spm_reslice_quiet({path_brod path_mask},flags);%use spm function 'spm_reslice_quiet.m' in SCZ-WM-pipeline by Yurui and Dylan
+copyfile([path01 '\preprocess\Masks\rAllResampled_BrainMask_05_91x109x91.nii'],...
+    [path01 '\brainmask.nii']);
+% reslice_nii([path01 '\preprocess\Masks\AllResampled_BrainMask_05_91x109x91.nii'],...
+%     [path01 '\brainmask.nii'],[2 2 2]);
+
 %%%%%% remove all the folders in preprocess to save space
 rmdir([path01 '\preprocess\'], 's');
 %%% load data
@@ -92,13 +102,12 @@ listdata(1:2,:)=[];
 %%%brain mask
 
 %%%%%%%%%%%%%
-
 for i = 1 : length(listdata)
     listfmr = dir([rootDir listdata(i).name]);
     listfmr(1:2,:)=[];
-    reslice_nii([rootDir listdata(i).name '\Detrend_4DVolume.nii'],[rootDir listdata(i).name '\rest1.nii'],[2 2 2]);
-    rest1tmp = load_untouch_nii([rootDir listdata(i).name '\rest1.nii']);
-    rest1img = rest1tmp.img;
+%     reslice_nii([rootDir listdata(i).name '\Detrend_4DVolume.nii'],[rootDir listdata(i).name '\rest1.nii'],[2 2 2]);
+    path1 = [rootDir listdata(i).name '\Detrend_4DVolume.nii'];
+    spm_reslice_quiet({path_brod path1},flags);
     %%%% save dir
     mkdir([path01 '\results\',listdata(i).name,'\']);
     saveDir = [path01 '\results\',listdata(i).name,'\'];
@@ -106,20 +115,24 @@ for i = 1 : length(listdata)
     %%%
     
     % set up parameters for FTI functions
-    info=niftiinfo([rootDir listdata(i).name '\rest1.nii']);
-    reso = info.PixelDimensions(1:3);
+    info=niftiinfo([rootDir listdata(i).name '\rDetrend_4DVolume.nii']);
+%     reso = info.PixelDimensions(1:3);
     nhood = 7;
     rpower = 2;
-    slice_interval = 1;
+%     slice_interval = 1;
     
     % TR = info.PixelDimensions(4);
     TR = Cfg.TR;
     
     %%% Step 0: preprocess the fmri
-    GMnii  = load_nii(strcat(path01,'\brainmask.nii'));
-    fMRnii = load_nii(strcat(rootDir,listdata(i).name,'\rest1.nii'));
-    GM = GMnii.img;
-    fMR = fMRnii.img;
+%     GMnii  = load_nii(strcat(path01,'\brainmask.nii'));
+    GM  = niftiread(strcat(path01,'\brainmask.nii'));
+    GM = flip(GM,1);
+%     fMRnii = load_nii(strcat(rootDir,listdata(i).name,'\rest1.nii'));
+    fMR = niftiread(strcat(rootDir,listdata(i).name,'\rDetrend_4DVolume.nii'));
+    fMR = flip(fMR,1);
+%     GM = GMnii.img;
+%     fMR = fMRnii.img;
     xcell_mask = GM;
     xcell = fMR;
     xcell = double(xcell);
