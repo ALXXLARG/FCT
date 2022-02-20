@@ -82,13 +82,14 @@ rootDir = [path01 '\data\']; % root Dir
 
 copyfile([path01, '\preprocess\FunImgARCWD\'],[path01 '\data\'])
 
-%%
+%
 flags = struct('mask', false, 'mean', false, 'interp', 1, 'which', 1, 'wrap', [0 0 0], 'prefix', 'r');
 path_brod = [path01 '\atlas\rBrodmann_YCG.nii'];
 path_mask = [path01 '\preprocess\Masks\AllResampled_BrainMask_05_91x109x91.nii'];
+%%%%%%%%%%%
 spm_reslice_quiet({path_brod path_mask},flags);%use spm function 'spm_reslice_quiet.m' in SCZ-WM-pipeline by Yurui and Dylan
 copyfile([path01 '\preprocess\Masks\rAllResampled_BrainMask_05_91x109x91.nii'],...
-    [path01 '\brainmask.nii']);
+  [path01 '\brainmask.nii']);
 % reslice_nii([path01 '\preprocess\Masks\AllResampled_BrainMask_05_91x109x91.nii'],...
 %     [path01 '\brainmask.nii'],[2 2 2]);
 
