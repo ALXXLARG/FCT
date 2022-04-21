@@ -106,9 +106,21 @@ spm_reslice_quiet({path_brod path_mask},flags);%use spm function 'spm_reslice_qu
 copyfile([out_dir '\preprocess\Masks\rAllResampled_BrainMask_05_91x109x91.nii'],...
   [out_dir '\brainmask.nii']);
 
-%%%%%% remove all the folders in preprocess to save space
+%%%%%% remove several folders in preprocessing steps to save space
 cd(out_dir);
-rmdir([out_dir '\preprocess\'], 's');
+
+if exist([out_dir '\preprocess\T1Img\'], 'dir'), rmdir([out_dir '\preprocess\T1Img\'], 's'); end
+if exist([out_dir '\preprocess\T1ImgCoreg\'], 'dir'), rmdir([out_dir '\preprocess\T1ImgCoreg\'], 's'); end
+if exist([out_dir '\preprocess\T1ImgNewSegment\'], 'dir'), rmdir([out_dir '\preprocess\T1ImgNewSegment\'], 's'); end
+if exist([out_dir '\preprocess\FunImg\'], 'dir'), rmdir([out_dir '\preprocess\FunImg\'], 's'); end
+if exist([out_dir '\preprocess\FunImgA\'], 'dir'), rmdir([out_dir '\preprocess\FunImgA\'], 's'); end
+if exist([out_dir '\preprocess\FunImgAR\'], 'dir'), rmdir([out_dir '\preprocess\FunImgAR\'], 's'); end
+if exist([out_dir '\preprocess\FunImgARC\'], 'dir'), rmdir([out_dir '\preprocess\FunImgARC\'], 's'); end
+if exist([out_dir '\preprocess\FunImgARCW\'], 'dir'), rmdir([out_dir '\preprocess\FunImgARCW\'], 's'); end
+if exist([out_dir '\preprocess\FunImgARCWD\'], 'dir'), rmdir([out_dir '\preprocess\FunImgARCWD\'], 's'); end
+if exist([out_dir '\preprocess\FunImgARCWDF\'], 'dir'), rmdir([out_dir '\preprocess\FunImgARCWDF\'], 's'); end
+if exist([out_dir '\preprocess\Results\'], 'dir'), rmdir([out_dir '\preprocess\Results\'], 's'); end
+% rmdir([out_dir '\preprocess\'], 's');
 %%% load data
 listdata = dir([out_dir '\data\']);
 listdata(1:2,:)=[];
@@ -170,6 +182,17 @@ for i = 1 : length(listdata)
     %%% calculate FCT 5D
     fti5d= reconFTI5d_m4_sm_saveFTI5d(GM, double(fMR1), nhood,rpower,saveDir,y0);
     save(strcat(saveDir,'fti5d.mat'),'fti5d');
+    %%% save FTI tensor figs for following QA steps
+    fMRmean = mean(fMR1,4,'omitnan');
+    FA1 = ones(size(fMR1,1),size(fMR1,2),size(fMR1,3));
+    f1 = plottensortotal1(fMRmean,fti5d,GM,1,44,FA1); % axial slice
+    f2 = plottensortotal1(fMRmean,fti5d,GM,2,56,FA1); % coronal slice
+    f3 = plottensortotal1(fMRmean,fti5d,GM,3,46,FA1); % sagital slice
+    savefig(f1,strcat(saveDir,'axialslice.fig'));
+    savefig(f2,strcat(saveDir,'coronalslice.fig'));
+    savefig(f3,strcat(saveDir,'sagitalslice.fig'));
+    close all;
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 end
 %%%%%%END!!
