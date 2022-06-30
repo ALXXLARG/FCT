@@ -10,19 +10,29 @@ function spm_dcm_peb_review(PEB, DCM)
 % Copyright (C) 2016 Wellcome Trust Centre for Neuroimaging
 
 % Peter Zeidman
-% $Id: spm_dcm_peb_review.m 6785 2016-04-27 14:23:12Z peter $
+% $Id: spm_dcm_peb_review.m 7479 2018-11-09 14:17:33Z peter $
 
 % Prepare input
 % -------------------------------------------------------------------------
 if nargin < 1 || isempty(PEB)
-    [PEB,sts] = spm_select(1,'mat','Select a PEB model',{},pwd,'^PEB_.*mat$');
+    [PEB,sts] = spm_select(1,'mat','Select a PEB model',{},pwd,'^(PEB|BMA)_.*mat$');
     if ~sts, return; end
+end
+
+if nargin < 2 || isempty(DCM)
+    [DCM,sts] = spm_select(1,'mat','(Optional) Select DCM or GCM file',{},pwd,'^(DCM|GCM)_.*mat$');
 end
 
 % Load / validate PEB
 if ischar(PEB)
     PEB = load(PEB);
-    PEB = PEB.PEB;
+    if isfield(PEB,'PEB')
+        PEB = PEB.PEB;
+    elseif isfield(PEB,'BMA')
+        PEB = PEB.BMA;
+    else
+        error('Not a valid PEB or BMA file');
+    end
 end
 
 if length(PEB) > 1, PEB = PEB(1); end
@@ -31,10 +41,11 @@ if ~isfield(PEB,'Ep')
     error('Please estimate this PEB model before reviewing');
 end
 
-% Load / validate DCM
-if nargin < 2 || isempty(DCM) || isempty(DCM{1}), DCM = {}; end
+% Ensure DCM is a cell array
+if isempty(DCM) || (iscell(DCM) && isempty(DCM{1})), DCM = {}; end
 if ~iscell(DCM), DCM = {DCM}; end
 
+% If DCM is a cell containing a filename, load the DCM/GCM
 if ~isempty(DCM) && ischar(DCM{1})
     DCM{1} = load(DCM{1});
     if isfield(DCM{1},'DCM')
@@ -42,7 +53,7 @@ if ~isempty(DCM) && ischar(DCM{1})
     elseif isfield(DCM{1},'GCM')
         DCM = DCM{1}.GCM;
     else
-        DCM = [];
+        error('The provided DCM/GCM file does not contain DCMs');
     end
 end
 
@@ -62,13 +73,14 @@ end
 xPEB = struct();
 xPEB.PEB           = PEB;
 xPEB.DCM           = DCM;
-xPEB.view          = 1;     % Selected view
-xPEB.sel_field_idx = 1;     % Selected first-level DCM field
-xPEB.sel_input     = 1;     % Selected first-level DCM input (U)
-xPEB.region_names  = {};    % First level region names
-xPEB.input_names   = {};    % First level input names
-xPEB.mtx_fig       = [];    % Figure handle for connectivity matrix
-xPEB.threshold_idx = 1;     % P-threshold following model comparison
+xPEB.view          = 1;       % Selected view (1=blank,2=commonalities,etc)
+xPEB.sel_field_idx = 1;       % Selected first-level DCM field
+xPEB.sel_input     = 1;       % Selected first-level DCM input (U)
+xPEB.region_names  = {};      % First level region names
+xPEB.input_names   = {};      % First level input names
+xPEB.mtx_fig       = [];      % Figure handle for connectivity matrix
+xPEB.threshold_idx = 1;       % P-threshold following model comparison
+xPEB.threshold_method_idx=[]; % Method for thresholding parameters
 
 % Get first-level DCM metadata
 if ~isempty(DCM) 
@@ -107,6 +119,7 @@ PEB           = xPEB.PEB;
 DCM           = xPEB.DCM;
 view          = xPEB.view;
 threshold_idx = xPEB.threshold_idx;
+threshold_method_idx = xPEB.threshold_method_idx;
 
 % Unpack PEB metadata
 np = length(PEB.Pnames); % Parameters
@@ -129,16 +142,40 @@ effect = view - 1;
 
 has_Pp = isfield(PEB,'Pp') || isfield(PEB,'Pw') || isfield(PEB,'Px');
     
-display_threshold = (effect > 0 && effect <= nc && has_Pp);
+display_threshold = (effect > 0 && effect <= nc);
 
-thresholds_str = {'No threshold (P >= 0)';
-                  'Weak evidence (P > 0.5)';
-                  'Positive evidence (P > 0.75)';
-                  'Strong evidence (P > 0.95)';
-                  'Very strong evidence (P > .99)'};
+if xPEB.threshold_method_idx == 1
+    % Thresholding based on posterior probability
+    thresholds_str = {'No threshold (Pp >= 0)';
+                  'Pp > 0.5';
+                  'Pp > 0.75';
+                  'Pp > 0.95';
+                  'Pp > .99'};    
+else
+    % Thresholding based on free energy
+    thresholds_str = {'No threshold (Pp >= 0)';
+                  'Weak evidence (Pp > 0.5)';
+                  'Positive evidence (Pp > 0.75)';
+                  'Strong evidence (Pp > 0.95)';
+                  'Very strong evidence (Pp > .99)'};
+end
+              
+threshold_methods_str = {'Probability that parameter > 0';
+                         'Free energy (with vs without)'};
+
+
+if has_Pp    
+    % If there are posterior probabilities, set free energy by default
+    if isempty(threshold_method_idx)
+        xPEB.threshold_method_idx = 2;
+    end
+else    
+    % If there's no posterior probability, disable free energy thresholding
+    xPEB.threshold_method_idx = 1;
+    threshold_methods_str = threshold_methods_str(1);
+end
 
 thresholds = [0 0.5 0.75 0.95 0.99]; 
-
 threshold  = thresholds(threshold_idx);
 
 % Get parameters / variance for the selected covariate
@@ -157,24 +194,62 @@ end
 
 % Apply threshold
 % -------------------------------------------------------------------------
+warn_no_pp         = false;
+warn_incomplete_pp = false;
+
 if display_threshold
     
-    if isfield(PEB,'Pw') && effect == 1
-        Pp = PEB.Pw;
+    % BMA from spm_dcm_peb_bmc only has probabilities for parameters which
+    % differed across models. Get the original indices of these parameters.
+    if isfield(PEB,'Pw') || isfield(PEB,'Px') && isfield(PEB.K)
+        k = find(any(~PEB.K));        
+    end
+    
+    if threshold_method_idx == 1
+        % Threshold using marginal variance
+        T  = 0;
+        Pp = 1 - spm_Ncdf(T,abs(Ep),Cp);
+    elseif isfield(PEB,'Pw') && effect == 1
+        % Threshold selected commonalities parameters
+        Pp    = nan(size(Ep,1),1);
+        Pp(k) = PEB.Pw(:);
     elseif isfield(PEB,'Px') && effect == 2
-        Pp = PEB.Px;
+        % Threshold selected group difference parameters
+        Pp    = nan(size(Ep,1),1);
+        Pp(k) = PEB.Px;
     elseif isfield(PEB,'Pp')
+        % Threshold on posterior probability (all parameters)
         Pp = PEB.Pp(peb_param_idx);
+    elseif (isfield(PEB,'Pw') || isfield(PEB,'Px')) && effect > 2
+        % Requested effect had no probability computed - return NaN
+        Pp = nan(size(Ep,1),1);        
     else
+        % No threshold
         Pp = [];
     end
     
     xPEB.Pp = Pp;
     
+    % Apply threshold
     if ~isempty(Pp) && threshold > 0
         Ep = Ep .* (Pp(:) > threshold);
         Cp = Cp .* (Pp(:) > threshold);
     end
+        
+    % Determine if this is a BMA resulting from a custom model comparison
+    % (in terms of commonalities and first group difference)
+    is_custom_model_bma = (isfield(PEB,'Pw') || isfield(PEB,'Pw')) ...
+                          && ~isfield(PEB,'Pp');
+    
+    % Display caveats
+    if xPEB.threshold_method_idx == 2 ...
+            && is_custom_model_bma && effect > 2 && threshold > 0
+        % Warn that Pp was only calculated for the 1st and 2nd covariates
+        warn_no_pp = true;
+    elseif xPEB.threshold_method_idx == 2 && any(isnan(Pp)) && threshold > 0
+        % Warn that some parameters didn't get a Pp
+        warn_incomplete_pp = true;
+    end          
 else
     xPEB.Pp = [];
 end
@@ -274,8 +349,12 @@ create_menu('Position',[0.1 0.58 0.85 0.1],'Tag','peb_select',...
 
 % Drop-down menu for selecting threshold
 if display_threshold
-    create_text('Threshold (model comparison with/without each parameter):',...
-           'Position',[0.1 0.59 0.65 0.05],'HorizontalAlignment','left');
+    create_text('Threshold (optional):',...
+           'Position',[0.1 0.585 0.65 0.05],'HorizontalAlignment','left');
+
+    create_menu('Position',[0.28 0.54 0.33 0.1],'Tag','peb_threshold_method',...
+        'Callback',@selected_threshold_method_changed, ...
+        'String',threshold_methods_str,'Value',xPEB.threshold_method_idx);
     
     create_menu('Position',[0.62 0.54 0.33 0.1],'Tag','peb_threshold',...
         'Callback',@selected_threshold_changed, ...
@@ -286,13 +365,17 @@ end
 h = create_panel('Position',[0 0.26 1 0.30]);
 xPEB.panels(2) = h;
 
-% Panel for reshaped parameters plot
+% Panel for launching reshaped parameters plot
 h = create_panel('Position',[0.05 0 0.55 0.22]);
 xPEB.panels(3) = h;
 
+% Panel for warnings & messages
+h = create_panel('Position',[0 0.22 1 0.04]);
+xPEB.panels(4) = h;
+
 if display_connectivity_selector
     
-    create_text('Display as matrix','Position',[0.13 0.8 0.6 0.10],...
+    create_text('Display as matrix','Position',[0.13 0.75 0.6 0.14],...
                 'FontSize',16,'Parent',xPEB.panels(3) );
     
     % Drop-down menu for controlling reshaped parameter plot
@@ -336,16 +419,20 @@ imagesc(PEB.M.X);
 set(gca,'XTick',1:nc);
 xlabel('Covariate','FontSize',12); ylabel('Subject','FontSize',12);
 axis square;
+v = get(gca,'Position');
+set(gca,'Position',[v(1) v(2)*1.25 v(3:4)])
 
 % Random effects variance
 subplot(3,7,[4:7 11:14 18:21],'Parent',xPEB.panels(1));
 imagesc(Ce);
 set(gca,'Tag','rfx');
 xlabel('First-Level Parameter','FontSize',12);
-text(np,1,'Random effects variance','FontSize',16,...
+text(np,1,'Random effects variance','FontSize',14,...
         'Color','white','HorizontalAlignment','right',...
         'VerticalAlignment','top');
 axis square;
+v = get(gca,'Position');
+set(gca,'Position',[v(1) v(2)*1.25 v(3:4)])
 
 % Add plots (lower panel) and render pop-up plots
 % -------------------------------------------------------------------------
@@ -368,9 +455,28 @@ elseif view <= (nc+1)
     % Plot parameters
     axes('Parent',xPEB.panels(2));
     spm_plot_ci(Ep,Cp);
+    set(gca,'XTickLabel',peb_param_idx,'XTick',1:length(peb_param_idx));
     set(gca,'Tag','parameters');
-    xlabel('Parameter','FontSize',12); ylabel('Posterior','FontSize',12);
+    xlabel('PEB Parameter','FontSize',12); ylabel('Posterior','FontSize',12);
     title('Estimated Parameters','FontSize',16);
+
+    % Show warnings related to thresholding
+    has_warning = warn_no_pp | warn_incomplete_pp;
+    
+    if has_warning
+        if warn_no_pp
+            str = 'Threshold only computed for commonalities and first group difference. None shown.';
+        elseif warn_incomplete_pp
+            str = 'Threshold only computed for parameters which varied across models. Others not shown.';
+        end
+        
+        axes('Parent',xPEB.panels(4),'Position',[0 0 1 1]);
+        text(0.5,0.5,str,...
+            'HorizontalAlignment','Center','FontSize',12,'Color','r');
+        xlim([0 1]);
+        axis off;
+
+    end             
     
     % Plot connectivity matrix
     if display_connectivity
@@ -416,9 +522,28 @@ elseif view <= (nc+1)
             set(ax,'Position',p);
         end
         
+        % Colormap 1 (hot)
+        T = [1 0 0   % Red   
+             1 1 0]; % Yellow                    
+        x = [0 1];
+        x = x(end:-1:1);
+        c1 = interp1(x,T,linspace(0,1,64));
+        
+        % Colormap 2 (cold)
+        T = [0 1 1             % Turqoise
+             0 0.0745 0.6078]; % Dark blue         
+        x = [0 1];
+        x = x(end:-1:1);
+        c2 = interp1(x,T,linspace(0,1,64));        
+         
+        % Combine and add white
+        c = [c2;c1];
+        c(64:65,:) = 1;
+        
         % Plot
-        imagesc(xPEB.Eq);
-        colorbar;               
+        imagesc(xPEB.Eq,[-1 1]);
+        colorbar;
+        colormap(c);
         
         % Style
         axis square;     
@@ -544,6 +669,9 @@ out = [parts.field '-matrix '];
 if isnan(parts.col)
     % Row only
     out = sprintf('%s %s', out, region_names{parts.row});
+elseif strcmp(parts.field,'C')
+    % Row and region
+    out = sprintf('%s %s',region_names{parts.row}, input_names{parts.col});
 else
     % Row and col
     out = sprintf('%s from %s to %s', ...
@@ -568,8 +696,17 @@ assignin('base','xPEB',xPEB);
 update_view();
 
 % =========================================================================
+function selected_threshold_method_changed(varargin)
+% Callback for change of threshold method click
+xPEB = evalin('base','xPEB');
+xPEB.threshold_method_idx = get(varargin{1},'Value');
+
+assignin('base','xPEB',xPEB);
+
+update_view();
+% =========================================================================
 function selected_threshold_changed(varargin)
-% Callback for change of thershold click
+% Callback for change of threshold click
 xPEB = evalin('base','xPEB');
 xPEB.threshold_idx = get(varargin{1},'Value');
 
@@ -641,12 +778,16 @@ switch tag
         
         pname1 = pname_to_string(Pnames{idx1}, region_names, input_names);
         
-        txt = {pname1; ' ';
+        Ep = full(xPEB.PEB.Ep(idx1, effect));
+        
+        txt = {pname1; 
+               sprintf('%3.3f', Ep);
+               ' ';
                sprintf('DCM parameter %d',idx1); 
                sprintf('PEB parameter %d',peb_param_idx(idx1))};
            
         if ~isempty(Pp)
-            txt = vertcat(txt,' ',sprintf('P(with > without): %2.2f',Pp(idx1)));
+            txt = vertcat(txt,' ',sprintf('Probability: %2.2f',Pp(idx1)));
         end
         
     case 'rfx'        
@@ -692,24 +833,41 @@ switch tag
                 idx2);
                 sprintf('Correlation: %2.2f',corr(idx2,idx1)); };
     case 'connectivity'   
-        
+                        
+        % Get selected DCM field (A or B etc)
         sel_field_idx = xPEB.sel_field_idx - 1;
+        dcm_field = xPEB.fields{sel_field_idx};
         
-        % Exclude for CMC
-        if strcmp(xPEB.fields{sel_field_idx},'G')
+        
+        if strcmp(dcm_field,'G')
+            % Exclude for CMC
             txt = '';
             return;
+        elseif strcmp(dcm_field,'C')
+            % Driving inputs
+            idx_region = idx2;
+            idx_input  = idx1;
+
+            r_from     = region_names{idx_region};
+            input_name = xPEB.input_names{idx_input};
+            Eq         = xPEB.Eq;
+
+            txt = {sprintf('Region: %s Input: %s',r_from,input_name);
+                   sprintf('%2.2f',Eq(idx_region,idx_input))};            
+        else
+            % Regular connectivity matrix
+            idx_from = idx1;
+            idx_to   = idx2;
+
+            r_from = region_names{idx_from};
+            r_to   = region_names{idx_to};
+            Eq     = xPEB.Eq;
+
+            txt = {sprintf('From %s to %s',r_from,r_to);
+                   sprintf('%2.2f',Eq(idx_to,idx_from))};
         end
                 
-        idx_from = idx1;
-        idx_to   = idx2;
-        
-        r_from = region_names{idx_from};
-        r_to   = region_names{idx_to};
-        Eq     = xPEB.Eq;
-        
-        txt = {sprintf('From %s to %s',r_from,r_to);
-               sprintf('%2.2f',Eq(idx_to,idx_from))};
+
     otherwise
         txt = '';
 end 

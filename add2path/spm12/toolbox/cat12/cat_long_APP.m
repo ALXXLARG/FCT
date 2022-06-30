@@ -26,8 +26,13 @@ function [Ym,Yb,WMth,Affine] = cat_long_APP(PF,PG,PB,opt)
 % Display result
 %   ds('l2','',vx_vol,Ym,Yb,Yp0,Ym,160)
 % ______________________________________________________________________
-% Robert Dahnke
-% $Id: cat_long_APP.m 1121 2017-03-31 06:54:16Z gaser $
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_long_APP.m 1791 2021-04-06 09:15:54Z gaser $
 
 %#ok<*WNOFF,*WNON>
 
@@ -53,7 +58,13 @@ function [Ym,Yb,WMth,Affine] = cat_long_APP(PF,PG,PB,opt)
 
   % initial APP
   Ysrc = single(VF.private.dat(:,:,:)); 
-  [Ym,Yt,Ybg,WMth] = cat_run_job_APP_init(Ysrc,opt.vx_vol,struct('verb',opt.verb-1));
+
+  if cat_get_defaults('extopts.APP') == 1070
+    [Ym,Yt,Ybg,WMth] = cat_run_job_APP_init1070(Ysrc,opt.vx_vol,opt.verb-1);
+  else
+    [Ym,Yt,Ybg,WMth] = cat_run_job_APP_init(Ysrc,opt.vx_vol,struct('verb',opt.verb-1,...
+          'APPstr',cat_get_defaults('opts.biasstr')));
+  end
   
   % write data to VF
   VF.dt         = [spm_type('UINT8') spm_platform('bigend')];
@@ -88,7 +99,7 @@ function [Ym,Yb,WMth,Affine] = cat_long_APP(PF,PG,PB,opt)
   VFa = VF; VFa.mat = Affine * VF.mat; 
   if isfield(VFa,'dat'), VFa = rmfield(VFa,'dat'); end
   [pp,ff] = spm_fileparts(PF); Pbt = fullfile(pp,['brainmask_' ff '.nii']);
-  [Vmsk,Yb]   = cat_vol_imcalc([VFa,VB],Pbt,'i2',struct('interp',3,'verb',0));
+  [Vmsk,Yb]   = cat_vol_imcalc([VFa,VB],Pbt,'i2',struct('interp',1,'verb',0));
     
   if opt.verb
     fprintf('%4.0fs\n',etime(clock,stime)); 

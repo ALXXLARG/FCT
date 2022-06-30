@@ -1,6 +1,12 @@
 function S=cat_vol_smooth3X(S,s,filter) 
 % S=cat_vol_smooth3X(S,s,filter) 
-% _________________________________________________________________________
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
 % TODO - vx_vol!!!!!!!
 %      - filter strength is also influcenced by the downsampling!!!
   if ~exist('s','var'), s=1; end
@@ -9,10 +15,10 @@ function S=cat_vol_smooth3X(S,s,filter)
   S(isnan(S(:)) | isinf(-S(:)) | isinf(S(:)))=0;                                          % correct bad cases
   
   SO=S;
-  if ismatrix(S)
+  if size(size(S),2) == 2
     slice = 1;
     S = repmat(S,1,1,2*s+1);
-  elseif isrow(S) || iscolumn(S)
+  elseif size(size(S),2) == 1
     error('ERROR: cat_vol_smooth3X: Input S has to be a matrix or volume!'); 
   else
     slice = 0;
@@ -22,12 +28,14 @@ function S=cat_vol_smooth3X(S,s,filter)
     S  = smooth3(S,'gaussian',3,0.5)*s + S*(1-s);
   elseif s>=0.5 && s<=1.0
     S  = smooth3(S,'gaussian',3,s);
-  elseif s>1.0 && all(size(S)>[6,6,6])
+  elseif s>1.0 && all(size(S)>6) 
     SR = reduceRes(S);           
     SR = cat_vol_smooth3X(SR,s/2); 
     S  = dereduceRes(SR,size(S)); 
-  elseif s>=1.0 && all(size(S)<=[6,6,6])
-    S  = smooth3(S,'gaussian',6,s); 
+  elseif s>=1.0 && any(size(S)<=6)
+    S  = smooth3(S,'gaussian',5,s); 
+  elseif s==0
+    % nothing to do
   else
     S  = smooth3(S,'gaussian',1,s); 
 %    error('ERROR: smooth3: s has to be greater 0'); 

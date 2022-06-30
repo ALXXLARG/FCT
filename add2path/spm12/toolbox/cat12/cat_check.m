@@ -9,12 +9,13 @@ function varargout = cat_check(action,varargin)
 % 
 % INtype = [1=F(file) | 2=V(hdr) | 3=V(hdr)+T(volume) | 4=T(volume)]
 % ______________________________________________________________________
-% Robert Dahnke 2012_10
-% Structural Brain Mapping Group
-% University Jena
-%  
-% $Id: cat_check.m 774 2015-11-18 15:53:05Z gaser $
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
 % ______________________________________________________________________
+% $Id: cat_check.m 1791 2021-04-06 09:15:54Z gaser $
 
   if nargin==0
     error('MATLAB:cat_check','Need some intput!\n');

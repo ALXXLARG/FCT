@@ -80,9 +80,14 @@ function [CVA] = cat_stat_cva_ui(action,varargin)
 % 3(3):167-174.
 %__________________________________________________________________________
 % Copyright (C) 2008-2014 Wellcome Trust Centre for Neuroimaging
-
+% ______________________________________________________________________
 %
-% $Id: cat_stat_cva_ui.m 1111 2017-02-15 11:41:08Z gaser $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_stat_cva_ui.m 1797 2021-04-09 09:33:35Z gaser $
 %
 % modified version of
 % Karl Friston
@@ -98,7 +103,7 @@ spm_input('!DeleteInputObj');
 %-Review old analysis or proceed with a new one
 %--------------------------------------------------------------------------
 if ~nargin || isempty(action)
-    action = spm_input('Canonical Variates Analysis','!+1','b', ...
+    action = spm_input('Canonical Variates Analysis',1,'b', ...
         {'New Analysis','Results'}, char({'specify','results'}), 1);
     if strcmpi(action,'results'), varargin = {}; end
 end
@@ -118,9 +123,15 @@ switch lower(action)
           cd(SPM.swd);
 
           % correct path for surface if analysis was made with different SPM installation
-          if ~exist(SPM.xVol.G,'file')
+          if isfield(SPM.xVol,'G') & ~exist(SPM.xVol.G,'file')
+            % check for 32k meshes
+            if SPM.xY.VY(1).dim(1) == 32492 || SPM.xY.VY(1).dim(1) == 64984
+              fsavgDir = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces_32k');
+            else
+              fsavgDir = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces');
+            end
             [SPMpth,SPMname,SPMext] = spm_fileparts(SPM.xVol.G);
-            SPM.xVol.G = fullfile(spm('Dir'),'toolbox','cat12','templates_surfaces',[SPMname SPMext]);
+            SPM.xVol.G = fullfile(fsavgDir,[SPMname SPMext]);
           end
 
           %-Check the model has been estimated
@@ -256,6 +267,9 @@ switch lower(action)
               F     = spm_file(F,'CPath');
               fprintf('Canonical image %s will be saved (significance: P<%g)\n',F,CVA.p(j));
               M     = gifti(SPM.xVol.G);
+              if ~isfield(SPM.xVol.G,'vertices')
+                SPM.xVol.G = M;
+              end
               C     = zeros(1,size(SPM.xVol.G.vertices,1));
               C(SPM.xVol.XYZ(1,:)) = CVA.V(:,j); % or use NODE_INDEX
               M.cdata = C;

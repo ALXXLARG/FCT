@@ -9,7 +9,13 @@ function varargout=cat_io_img2nii(img,c,verb)
 %  verb .. display something (default=1)
 % 
 % ______________________________________________________________________
-% $Revision: 764 $  $Date: 2015-11-17 14:11:53 +0100 (Di, 17 Nov 2015) $
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Revision: 1791 $  $Date: 2021-04-06 11:15:54 +0200 (Di, 06 Apr 2021) $
   if ~exist('img','var') || isempty(img)
     img = spm_select(Inf  ,'img','Select img files'); 
   end

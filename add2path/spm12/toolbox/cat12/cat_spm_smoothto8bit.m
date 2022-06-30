@@ -1,15 +1,21 @@
-function VO = spm_smoothto8bit(V,fwhm)
+function VO = cat_spm_smoothto8bit(V,fwhm)
 % 3 dimensional convolution of an image to 8bit data in memory
-% FORMAT VO = spm_smoothto8bit(V,fwhm)
+% FORMAT VO = cat_spm_smoothto8bit(V,fwhm)
 % V     - mapped image to be smoothed
 % fwhm  - FWHM of Guassian filter width in mm
 % VO    - smoothed volume in a form that can be used by the
 %         spm_*_vol.mex* functions.
 %_______________________________________________________________________
 % Copyright (C) 2008 Wellcome Trust Centre for Neuroimaging
-
 % John Ashburner
-% $Id: cat_spm_smoothto8bit.m 1138 2017-06-12 14:26:32Z dahnke $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_spm_smoothto8bit.m 1791 2021-04-06 09:15:54Z gaser $
 
 
 if nargin>1 && fwhm>0,

@@ -1,20 +1,22 @@
 function CJV = cat_tst_CJV(P,Pp0)
 % ______________________________________________________________________
-% Function to estimate the CJV (coefficent of joint variation) in
+% Function to estimate the CJV (coefficient of joint variation) in
 % images.
 % 
 %  CJV = cat_tst_CJV(P,Pp0)
 %  
 %  P    ... set of n images (cellstr or char)
-%  Pp0  ... set of 1 (ground thruth) or n images (cellstr of char)
+%  Pp0  ... set of 1 (ground truth) or n images (cellstr of char)
 %  CJV  ... matrix of n CJV values of each image
 %
 % ______________________________________________________________________
-% Robert Dahnke 
-% Structural Brain Mapping Group
-% University Jena
 %
-% $Id: cat_tst_CJV.m 764 2015-11-17 13:11:53Z gaser $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_tst_CJV.m 1791 2021-04-06 09:15:54Z gaser $
 % ______________________________________________________________________
 
   if iscell(P)   && size(P,1)  <size(P,2), end% P=char(P);     end

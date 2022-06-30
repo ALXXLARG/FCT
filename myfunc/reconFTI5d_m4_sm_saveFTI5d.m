@@ -12,7 +12,7 @@
 %   tensor_size - tensor size for FT visualization 
 %   prefix/FW/saveDir - name strings and directory for saved fname 
 
-function fti5d= reconFTI5d_m4_sm_saveFTI5d(fmri_mask1, fmri4d,nhood, rpower,saveDir,calipara)
+function fti5d = reconFTI5d_m4_sm_saveFTI5d(fmri_mask1, fmri4d,nhood, rpower, calipara)
 
 % remove NaN and Inf from fMRI data
 fmri4d(isnan(fmri4d)) = 0;  
@@ -129,8 +129,6 @@ for r=startingpoint:rsize-(startingpoint-1)
         end % sfor
     end % cfor
 end % rfor
-
-save([saveDir 'FTI5d.mat'], 'fti5d');
 
 return;
 

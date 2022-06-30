@@ -28,26 +28,44 @@ function TA=cat_vol_approx(T,method,vx_vol,res,opt)
 % Examples:
 %   There is a cell mode test part in the file...%
 %
+% TODO:
+% - RD202005: This function needs a full update with full description
+%             and a full test design. 
 % ______________________________________________________________________
-% Robert Dahnke
-% Structural Brain Mapping Group
-% University Jena
 %
-% $Id: cat_vol_approx.m 1149 2017-06-23 10:31:47Z dahnke $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_vol_approx.m 1791 2021-04-06 09:15:54Z gaser $
 
+  if nargin==0, help cat_vol_approx; return; end
   if ~exist('res','var'); res=4; end
   if ~exist('vx_vol','var'); vx_vol=ones(1,3); end
   if ~exist('method','var'); method='nn'; end
   
   if ~exist('opt','var'), opt=struct(); end
+  % The function approximates only values larger than zeros due to step-wise development. 
+  % The most easy update was to shift the value and use a mask to redefine the filter volume.
+  if min(T(:))<0 
+    mask  = T==0;
+    cf    = min(T(T(:)~=0)) - 1; 
+    T     = T - cf;
+    T(mask) = 0; 
+  end
+  
   def.lfI  = 0.40;
   def.lfO  = 0.40;
   def.hull = 1;
   opt = cat_io_checkinopt(opt,def);
+  opt.lfO = min(10,max(0.0001,opt.lfO));
+
+  if exist('rng','file') == 2, rng('default'); rng(0); else, rand('state',0); randn('state',0); end
   
   T(isnan(T) | isinf(T))=0; 
-  maxT = max(T(T(:)<inf & ~isnan(T(:))));
-  T = single(T/max(eps,maxT));
+  maxT = max([ eps; T(T(:)~=0 & T(:)<inf & ~isnan(T(:))) ]);
+  T = single(T/maxT);
   
   if 0 % T(isnan(T))=0;
     % outlier removal ... not yet
@@ -74,6 +92,7 @@ function TA=cat_vol_approx(T,method,vx_vol,res,opt)
       TAr     = cat_vol_laplace3R(TAr,true(size(TAr)),double(opt.lfO)) * meanTAr; 
     else
       TASr=cat_vol_smooth3X(TAr,2); TAr(~BMr)=TASr(~BMr); clear TASr; 
+      opt.lfO = min(0.49,max(0.0001,opt.lfO));
       TAr = cat_vol_laplace3R(TAr,BMr & ~Tr,opt.lfO); TAr = cat_vol_median3(TAr); %,Tr>0,Tr>0,0.05); 
       %TAr = cat_vol_laplace3R(TAr,Tr>0,opt.lfI); 
       TAr = cat_vol_laplace3R(TAr,BMr & ~Tr,opt.lfO);
@@ -107,26 +126,26 @@ function TA=cat_vol_approx(T,method,vx_vol,res,opt)
       TAr = cat_vol_laplace3R(TAr,~BMr,opt.lfO); TAr = cat_vol_median3(TAr,~BMr); 
       TAr = cat_vol_laplace3R(TAr,~BMr,opt.lfO); 
     case 'spm'
-      fname     = fullfile(tempdir,'approxtst.nii');
+      filename  = fullfile(tempdir,'approxtst.nii');
       N         = nifti;
-      N.dat     = file_array(fname,size(Tr),[spm_type('float32') spm_platform('bigend')],0,1,0);
+      N.dat     = file_array(filename,size(Tr),[spm_type('float32') spm_platform('bigend')],0,1,0);
       N.mat     = [eye(4,3), [size(Tr)'/2;1]]; N.mat([1,6,11])=resTr.vx_volr;
       N.mat0    = N.mat;
       N.descrip = 'approx test';
       create(N);
       N.dat(:,:,:) = double(Tr);
 
-      fnameB    = fullfile(tempdir,'approxtstB.nii');
+      filenameB = fullfile(tempdir,'approxtstB.nii');
       B         = nifti;
-      B.dat     = file_array(fnameB,size(Tr),[spm_type('float32') spm_platform('bigend')],0,1,0);
+      B.dat     = file_array(filenameB,size(Tr),[spm_type('float32') spm_platform('bigend')],0,1,0);
       B.mat     = [eye(4,3), [size(Tr)'/2;1]]; N.mat([1,6,11])=resTr.vx_volr;
       B.mat0    = B.mat;
       B.descrip = 'approx test B';
       create(B);
       B.dat(:,:,:) = ones(size(Tr));
 
-      V  = spm_vol(fname); 
-      VB = spm_vol(fnameB); 
+      V  = spm_vol(filename); 
+      VB = spm_vol(filenameB); 
     
     
       % SPM bias correction
@@ -135,7 +154,7 @@ function TA=cat_vol_approx(T,method,vx_vol,res,opt)
       VAr = spm_bias_apply(VB,bT); TAr = 1/max(eps,single(spm_read_vols(VAr)) * mean(TA(Tr(:)>0)));
 %      ds('d2','',[1 1 1],PT{1},PT{2}/max(PT{2}(:)),TA,TAr,20)
       
-      delete(fname,fnameB);
+      delete(filename,filenameB);
       
   end
   %{
@@ -150,6 +169,10 @@ function TA=cat_vol_approx(T,method,vx_vol,res,opt)
   
   TA  = cat_vol_resize(TAr,'dereduceV',resTr);
   TA  = TA*maxT;
+  
+  if exist('cf','var')
+    TA = TA + cf;
+  end
 end
 function cat_tst_pre_approx
   %%
@@ -194,18 +217,18 @@ function cat_tst_pre_approx
   %%
     T = PT{1}.*PM{1}; %T(T==0)=nan;
   
-    fname     = fullfile(tempdir,'approxtst.nii');
+    filename  = fullfile(tempdir,'approxtst.nii');
     N         = nifti;
-    N.dat     = file_array(fname,PTsize,[spm_type('float32') spm_platform('bigend')],0,1,0);
+    N.dat     = file_array(filename,PTsize,[spm_type('float32') spm_platform('bigend')],0,1,0);
     N.mat     = [eye(4,3)*vx_vol(1), [PTsize'/2;1]];
     N.mat0    = N.mat;
     N.descrip = 'approx test';
     create(N);
     N.dat(:,:,:) = double(T);
 
-    fnameB    = fullfile(tempdir,'approxtstB.nii');
+    filenameB = fullfile(tempdir,'approxtstB.nii');
     B         = nifti;
-    B.dat     = file_array(fnameB,PTsize,[spm_type('float32') spm_platform('bigend')],0,1,0);
+    B.dat     = file_array(filenameB,PTsize,[spm_type('float32') spm_platform('bigend')],0,1,0);
     B.mat     = [eye(4,3)*vx_vol(1), [PTsize'/2;1]];
     B.mat0    = B.mat;
     B.descrip = 'approx test B';
@@ -213,8 +236,8 @@ function cat_tst_pre_approx
     B.dat(:,:,:) = ones(PTsize);
 
     
-    V  = spm_vol(fname); 
-    VB = spm_vol(fnameB); 
+    V  = spm_vol(filename); 
+    VB = spm_vol(filenameB); 
     
  %% SPM spline interpolation  
     intp = 1; warp = 0;

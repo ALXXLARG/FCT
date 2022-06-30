@@ -4,11 +4,16 @@ function cat_stat_showslice_all(vargin)
 % FORMAT cat_stat_showslice_all
 %
 % slice has to be choosen in mm
-%__________________________________________________________________________
-% Christian Gaser
-% $Id: cat_stat_showslice_all.m 1052 2016-10-26 14:01:23Z dahnke $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_stat_showslice_all.m 1791 2021-04-06 09:15:54Z gaser $
 
-rev = '$Rev: 1052 $';
+rev = '$Rev: 1791 $';
 
 if nargin == 1
 	P = char(vargin.data_vol);
@@ -128,7 +133,7 @@ fprintf('Compressed filenames: %s\n',tmp);
 for i = 1:sizex
   for j = 1:sizey
     k = (sizex-i) + sizex*(j-1);
-    if k < n && k>0
+    if k < n && k >= 0
       text(round(sizex*dim_array(1)-((i-1)*dim_array(1)+(i)*dim_array(1))/2),(j-1)*dim_array(2)+fs+2,names.m{k+1},...
         'FontSize',fs,'Color','r','HorizontalAlignment','center');
     end

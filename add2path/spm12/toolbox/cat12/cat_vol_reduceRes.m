@@ -2,14 +2,19 @@ function varargout = cat_vol_reduceRes(varargin)
 % ______________________________________________________________________
 % Reduction of the image resolution by merging of voxels with the name
 % "lowresR#x#x#_*.nii with * for the original file name, and # for the 
-% degree of reduction, with #=2 for the half resolutino.
+% degree of reduction, with #=2 for the half resolution.
 %
 % V = cat_vol_reduceRes(job)
 % 
 % job.data = cell of filename, use GUI if empty
 % ______________________________________________________________________
-% Robert Dahnke
-% $Id: cat_vol_reduceRes.m 1036 2016-10-18 14:26:32Z dahnke $
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_vol_reduceRes.m 1817 2021-04-29 15:11:43Z dahnke $
 
   if nargin == 0 
       job.data = cellstr(spm_select([1 Inf],'image','select images to reduce'));

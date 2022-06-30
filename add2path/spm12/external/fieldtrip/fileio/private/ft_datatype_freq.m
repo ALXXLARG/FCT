@@ -6,7 +6,7 @@ function [freq] = ft_datatype_freq(freq, varargin)
 % channel-level data. This data structure is usually generated with the
 % FT_FREQANALYSIS function.
 %
-% An example of a freq structure containing the powerspectrum for 306 channels
+% An example of a freq data structure containing the powerspectrum for 306 channels
 % and 120 frequencies is
 %
 %       dimord: 'chan_freq'          defines how the numeric data should be interpreted
@@ -15,7 +15,7 @@ function [freq] = ft_datatype_freq(freq, varargin)
 %         freq: [1x120 double]       the frequencies expressed in Hz
 %          cfg: [1x1 struct]         the configuration used by the function that generated this data structure
 %
-% An example of a freq structure containing the time-frequency resolved
+% An example of a freq data structure containing the time-frequency resolved
 % spectral estimates of power (i.e. TFR) for 306 channels, 120 frequencies
 % and 60 timepoints is
 %
@@ -37,11 +37,6 @@ function [freq] = ft_datatype_freq(freq, varargin)
 %
 % Obsoleted fields:
 %   - <none>
-%
-% Historical fields:
-%   - cfg, crsspctrm, cumsumcnt, cumtapcnt, dimord, elec, foi,
-%   fourierspctrm, freq, grad, label, labelcmb, powspctrm, time, toi, see
-%   bug2513
 %
 % Revision history:
 %
@@ -107,32 +102,43 @@ if isfield(freq, 'time') && ~isrow(freq.time)
   freq.time = freq.time';
 end
 if ~isfield(freq, 'label') && ~isfield(freq, 'labelcmb')
-  warning('data structure is incorrect since it has no channel labels');
+  ft_warning('data structure is incorrect since it has no channel labels');
 end
 
 switch version
   case '2011'
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % ensure that the sensor structures are up to date
     if isfield(freq, 'grad')
-      % ensure that the gradiometer structure is up to date
       freq.grad = ft_datatype_sens(freq.grad);
     end
-
     if isfield(freq, 'elec')
-      % ensure that the electrode structure is up to date
       freq.elec = ft_datatype_sens(freq.elec);
     end
-
+    if isfield(freq, 'opto')
+      freq.opto = ft_datatype_sens(freq.opto);
+    end
+    
     if isfield(freq, 'foi') && ~isfield(freq, 'freq')
       % this was still the case in early 2006
       freq.freq = freq.foi;
       freq = rmfield(freq, 'foi');
     end
-
+    
     if isfield(freq, 'toi') && ~isfield(freq, 'time')
       % this was still the case in early 2006
       freq.time = freq.toi;
       freq = rmfield(freq, 'toi');
+    end
+    
+    if isfield(freq, 'cumtapcnt') && isvector(freq.cumtapcnt)
+      % ensure that it is a column vector
+      freq.cumtapcnt = freq.cumtapcnt(:);
+    end
+    
+    if isfield(freq, 'cumsumcnt') && isvector(freq.cumsumcnt)
+      % ensure that it is a column vector
+      freq.cumsumcnt = freq.cumsumcnt(:);
     end
 
   case '2008'
@@ -149,5 +155,5 @@ switch version
 
   otherwise
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    error('unsupported version "%s" for freq datatype', version);
+    ft_error('unsupported version "%s" for freq datatype', version);
 end

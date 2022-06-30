@@ -14,12 +14,12 @@ function Prdata = cat_surf_flipsides(job)
 %
 % ______________________________________________________________________
 %
-%   Robert Dahnke (robert.dahnke@uni-jena.de)
-%   Structural Brain Mapping Group (http://dbm.neuro.uni-jena.de/)
-%   Department of Neurology
-%   University Jena
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
 % ______________________________________________________________________
-% $Id: cat_surf_flipsides.m 938 2016-05-19 08:35:43Z gaser $
+% $Id: cat_surf_flipsides.m 1901 2021-10-26 10:25:52Z gaser $
 
 
 
@@ -27,41 +27,42 @@ function Prdata = cat_surf_flipsides(job)
 % Todo:
 % 
 % * Hier muss ein allgemeinenes Konzept vorliegen, mit dem sich sowohl eine
-%   automatische (z.B. für cat_surf_calc), als auch manuelle Nutzung (GUI)
-%   möglich ist. 
+%   automatische (z.B. fuer cat_surf_calc), als auch manuelle Nutzung (GUI)
+%   moeglich ist. 
 %
-% * Ich fürchte ich mach die dinge komplizierter als sie sind ...
+% * Ich fuerchte ich mach die dinge komplizierter als sie sind ...
 %
 % Facts: 
-%   1. Die Daten müssen IMMER gesampled werden.
-%   2. Für eine Analyse kommen nur GIFTIs in Frage. 
-%   3. Für eine Analyse spielt die Seite keine Rolle. 
-%   >> Als in/output wäre die s#mm.rh.DATA.resampled.SUBJECT.gii wohl sinnvoll  
-%   >> Als Name könnte man entweder eine dritte seite Lh/Rh nutzen oder 
-%      einen weiteren Term 'flipped' einfügen  
-%   >> Nutzt man den Subject-case wäre die Orignaldaten rh.DATA.SUBJECT 
-%      wohl besser (achtung hier könnten auch resampled reinrutschen
-%   >> Analysefertig ausgabe sinnvoll ... andere fälle machens nur unnötig komplex
+%   1. Die Daten muessen IMMER gesampled werden.
+%   2. Fuer eine Analyse kommen nur GIFTIs in Frage. 
+%   3. Fuer eine Analyse spielt die Seite keine Rolle. 
+%   >> Als in/output waere die s#mm.rh.DATA.resampled.SUBJECT.gii wohl sinnvoll  
+%   >> Als Name koennte man entweder eine dritte seite Lh/Rh nutzen (=mesh) oder 
+%      einen weiteren Term 'flip' oder 'flipped' einfuegen 
+%   >> Die 32k Meshes sind flip-ready!
+%   >> Nutzt man den Subject-case waere die Orignaldaten rh.DATA.SUBJECT 
+%      wohl besser (achtung hier koennten auch resampled reinrutschen)
+%   >> Analysefertig ausgabe sinnvoll ... andere Faelle machens nur unnoetig komplex
 %
 % Frage: 
 %   1. Spielt die Reihefolge des Remeshings eine Rolle?
-%   >> Wahrscheinlich besser die Originaloberfläche auf die andere Seite zu mappen im individuellen Fall.
+%   >> Wahrscheinlich besser die Originaloberflaeche auf die andere Seite zu mappen im individuellen Fall.
 %   >> Beim template-Fall spiel das wohl eher keine Rolle
 %
 % * Namensgebebung: 
 %      rh.thickness.MaMu99.gii > Lh.thickness.MaMu99.gii
 %      s#mm.rh.thickness.resampled.MaMu99.gii
 %
-% * Flip man nur texturen oder ganze Oberflächen?
-%   - wegen Analyse ganze Oberflächen
+% * Flip man nur texturen oder ganze Oberflaechen?
+%   - wegen Analyse ganze Oberflaechen
 %
 % * GUI Anbindung
-%   - job.cdata (lh > rh, rh > lh) ... am besten nur eine seite wählbar, so bekommst du ein sichereres reslutat 
+%   - job.cdata (lh > rh, rh > lh) ... am besten nur eine seite waehlbar, so bekommst du ein sichereres reslutat 
 %   - job.type (template | subject) ...
 %
-% * automatische Ansbindung für surf_calc
+% * automatische Ansbindung fuer surf_calc
 %   - es wird kein bild geschrieben, sondern die daten werden als output
-%     übergeben
+%     uebergeben
 
 % Ablauf...
 % * Input sollten die Originaldaten (Texturen) sein.
@@ -117,7 +118,7 @@ function Prdata = cat_surf_flipsides(job)
       % registration 
       cmd = sprintf('CAT_WarpSurf -type 0 -i "%s" -is "%s" -t "%s" -ts "%s" -ws "%s"',...
         Pflipcentral{si},Pflipsphere{si},Pcentral{~(si-1)+1},Psphere{~(si-1)+1},Preg{~(si-1)+1});
-      [ST, RS] = cat_system(cmd); cat_check_system_output(ST,RS,job.debug);
+      cat_system(cmd,job.debug);
     end
   end
   
@@ -156,7 +157,7 @@ function Prdata = cat_surf_flipsides(job)
 
         cmd = sprintf('CAT_ResampleSurf "%s" "%s" "%s" "%s" "%s" "%s"',...
           fullfile(pp,[ff 'tmp']),Preg{~(si-1)+1},Psphere{si},Prmesh{di},job.cdata{di},Prdata{di});
-        [ST, RS] = cat_system(cmd); err = cat_check_system_output(ST,RS,job.debug); 
+        err = cat_system(cmd,job.debug); 
 
         if err
           cat_io_cprintf('err','Case "%s" did not work.\n',job.cdata{di}); 
@@ -195,7 +196,7 @@ function Prdata = cat_surf_flipsides(job)
       % registration 
       cmd = sprintf('CAT_WarpSurf -type 0 -i "%s" -is "%s" -t "%s" -ts "%s" -ws "%s"',...
         Pflipcentral{si},Pflipsphere{si},Pcentral{~(si-1)+1},Psphere{~(si-1)+1},Preg{~(si-1)+1});
-      [ST, RS] = cat_system(cmd); cat_check_system_output(ST,RS,opt.debug);
+      cat_system(cmd,opt.debug);
     
       end
     %}

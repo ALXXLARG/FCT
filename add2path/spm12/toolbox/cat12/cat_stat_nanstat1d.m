@@ -2,12 +2,14 @@ function x=cat_stat_nanstat1d(x,action)
 % ----------------------------------------------------------------------
 % replace nan* functions of the stat toolbox for the 1d case 
 % use double, because mean error for large single arrays.
-% ----------------------------------------------------------------------
-% Robert Dahnke 
-% Structural Brain Mapping Group
-% University Jena 
-% ----------------------------------------------------------------------
-% $Id: cat_stat_nanstat1d.m 1036 2016-10-18 14:26:32Z dahnke $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_stat_nanstat1d.m 1791 2021-04-06 09:15:54Z gaser $
 
   x=double(x(:)); x(isnan(x) | isinf(x))=[];
   if ~exist('action','var'), action='nanmean'; end

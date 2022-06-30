@@ -4,6 +4,8 @@ function out = cat_stat_nanmean(in, dim)
 % MATLAB nanmean of the statistic toolbox. Process input as double
 % due to errors in large single arrays and set data class of "out" 
 % to the data class of "in" at the end of the processing.
+% Use dim==0 to evaluate in(:) in case of dimension selection 
+% (e.g., in(:,:,:,2) ).
 %
 % out = cat_stat_nanmean(in,dim)
 %
@@ -17,12 +19,15 @@ function out = cat_stat_nanmean(in, dim)
 % Example 2 - special test call of example 1:
 %   cat_stat_nanstd('test')
 %
-% ----------------------------------------------------------------------
-% Robert Dahnke 
-% Structural Brain Mapping Group
-% University Jena 
-% ----------------------------------------------------------------------
-% $Id: cat_stat_nanmean.m 1122 2017-04-03 17:09:48Z dahnke $
+% See also cat_stat_nansum, cat_stat_nanstd, cat_stat_nanmedian.
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_stat_nanmean.m 1796 2021-04-08 09:14:18Z gaser $
 
   if nargin < 1
     help cat_stat_nanmean;
@@ -48,6 +53,11 @@ function out = cat_stat_nanmean(in, dim)
       dim = 3; 
     end;
   end;
+  
+  if dim == 0 
+    in  = in(:); 
+    dim = 1; 
+  end
   
   if isempty(in), out = nan; return; end
   

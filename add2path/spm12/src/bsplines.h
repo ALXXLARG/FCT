@@ -1,7 +1,8 @@
 /*
- * $Id: bsplines.h 4624 2012-01-13 13:27:08Z john $
+ * $Id: bsplines.h 7686 2019-11-06 13:18:06Z guillaume $
  * John Ashburner
  */
+ 
 #ifdef IMAGE_SINGLE
 #define IMAGE_DTYPE float
 #else
@@ -10,7 +11,7 @@
  
 void splinc_wrap(IMAGE_DTYPE c[], int m, double p[], int np);
 void splinc_mirror(IMAGE_DTYPE c[], int m, double p[], int np);
-int get_poles(int d, int *np, double p[]);
+int get_poles(int d, /*@out@*/ int *np, /*@out@*/ double p[]);
 int mirror();
 int wrap();
 IMAGE_DTYPE sample3(IMAGE_DTYPE c[], int m0, int m1, int m2,

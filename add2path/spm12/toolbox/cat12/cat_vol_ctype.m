@@ -1,25 +1,28 @@
 function Y=cat_vol_ctype(Y,type)
 % ______________________________________________________________________
-% Y=cat_vol_conv(Y[,type])
+% Y=cat_vol_ctype(Y[,type])
 %
 % Convert datatype with checking of min/max, nan, and rounding for 
 % [u]int[8|16], single, double, and char. Default round type is 'uint8'. 
 % Y has to be a matrix or cell. 
 %
-% This function is only writen for our private use, mostly to convert 
+% This function is only written for our private use, mostly to convert 
 % single to uint8. I did not check for special behavior, for extremly 
 % high values or special rounding issues, or converting to larger 
 % classes etc.!
 % ______________________________________________________________________
 %
-% Robert Dahnke 
-% Structural Brain Mapping Group
-% University Jena
-%
-% $Id: cat_vol_ctype.m 1129 2017-05-09 12:58:31Z gaser $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
 % ______________________________________________________________________
-  
-  types = {'int8','int16','int32','int64','single',...
+% $Id: cat_vol_ctype.m 1855 2021-07-01 13:56:52Z dahnke $
+% ______________________________________________________________________
+ 
+  if nargin==0, help cat_vol_ctype; return; end
+
+  types = {'int8','int16','int32','int64','single','float32','float64'...
            'uint8','uint16','uint32','uint64','double'};
 
   if ~exist('type','var');
@@ -37,6 +40,7 @@ function Y=cat_vol_ctype(Y,type)
              '(only [u]int[8|16], single, and double).'],type);
     end
   end
+  type = cat_io_strrep(type,{'float32','float64'},{'single','dobule'});
 
   
   if iscell(Y)

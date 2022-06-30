@@ -1,4 +1,4 @@
-function varargout=spm_platform(varargin)
+function varargout = spm_platform(varargin)
 % Platform specific configuration parameters for SPM
 %
 % FORMAT ans = spm_platform(arg)
@@ -13,7 +13,6 @@ function varargout=spm_platform(varargin)
 %        - 'user'    - returns username
 %        - 'host'    - returns system's host name
 %        - 'tempdir' - returns name of temp directory
-%        - 'drives'  - returns string containing valid drive letters
 %        - 'desktop' - returns whether or not the Desktop is in use
 %
 % FORMAT PlatFontNames = spm_platform('fonts')
@@ -50,10 +49,10 @@ function varargout=spm_platform(varargin)
 % Platform specific definitions are contained in the data structures at
 % the beginning of the init_platform subfunction at the end of this file.
 %__________________________________________________________________________
-% Copyright (C) 1999-2016 Wellcome Trust Centre for Neuroimaging
+% Copyright (C) 1999-2019 Wellcome Trust Centre for Neuroimaging
 
 % Matthew Brett
-% $Id: spm_platform.m 6903 2016-10-12 11:36:41Z guillaume $
+% $Id: spm_platform.m 7541 2019-03-11 12:20:27Z spm $
 
 
 %-Initialise
@@ -92,8 +91,7 @@ varargout = {PLATFORM.host};
 
 case 'drives'                                               %-Return drives
 %==========================================================================
-warning('Use spm_select(''ListDrives'') instead.');
-varargout = {PLATFORM.drives};
+error('Use spm_select(''ListDrives'') instead.');
 
 case 'tempdir'                                 %-Return temporary directory
 %==========================================================================
@@ -141,16 +139,17 @@ end
 function PLATFORM = init_platform(comp)     %-Initialise platform variables
 %==========================================================================
 if nargin<1
-    if ~strcmpi(spm_check_version,'octave')
+    if strcmpi(spm_check_version,'matlab')
         comp = computer;
     else
         if isunix
-            switch uname.machine
+            comp = uname.machine;
+            switch comp
                 case {'x86_64'}
                     comp = 'GLNXA64';
                 case {'i586','i686'}
                     comp = 'GLNX86';
-                case {'armv6l','armv7l','armv8l'}
+                case {'armv6l','armv7l','armv8l','aarch64'}
                     comp = 'ARM';
                 otherwise
                     error('%s is not supported.',comp);
@@ -224,15 +223,6 @@ switch PLATFORM.filesys
         PLATFORM.host = getenv('COMPUTERNAME');
 end
 PLATFORM.host = strtok(PLATFORM.host,'.');
-
-
-%-Drives
-%--------------------------------------------------------------------------
-PLATFORM.drives = '';
-if strcmp(PLATFORM.filesys,'win')
-    driveLett = spm_select('ListDrives');
-    PLATFORM.drives = strrep(strcat(driveLett{:}),':','');
-end
 
 
 %-Fonts

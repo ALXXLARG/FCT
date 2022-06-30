@@ -5,54 +5,62 @@ function [PEB,P]   = spm_dcm_peb(P,M,field)
 %
 % DCM    - {N [x M]} structure array of DCMs from N subjects
 % -------------------------------------------------------------------------
-%     DCM{i}.M.pE	- prior expectation of parameters
-%     DCM{i}.M.pC	- prior covariances of parameters
-%     DCM{i}.Ep		- posterior expectations
-%     DCM{i}.Cp		- posterior covariance
-%     DCM{i}.F		- free energy
+%     DCM{i}.M.pE   - prior expectation of parameters
+%     DCM{i}.M.pC   - prior covariances of parameters
+%     DCM{i}.Ep     - posterior expectations
+%     DCM{i}.Cp     - posterior covariance
+%     DCM{i}.F      - free energy
 %
-% M.X	   - 2nd-level design matrix: X(:,1) = ones(N,1) [default]
-% M.bE	   - 3rd-level prior expectation [default: DCM{1}.M.pE]
-% M.bC	   - 3rd-level prior covariance  [default: DCM{1}.M.pC/M.alpha]
+% M.X      - 2nd-level design matrix: X(:,1) = ones(N,1) [default]
+% M.bE     - 3rd-level prior expectation [default: DCM{1}.M.pE]
+% M.bC     - 3rd-level prior covariance  [default: DCM{1}.M.pC/M.alpha]
 % M.pC     - 2nd-level prior covariance  [default: DCM{1}.M.pC/M.beta]
-% M.hE	   - 2nd-level prior expectation of log precisions [default: 0]
-% M.hC	   - 2nd-level prior covariances of log precisions [default: 1/16]
+% M.hE     - 2nd-level prior expectation of log precisions [default: 0]
+% M.hC     - 2nd-level prior covariances of log precisions [default: 1/16]
+% M.maxit  - maximum iterations [default: 64]
 %
 % M.Q      - covariance components: {'single','fields','all','none'}
 % M.alpha  - optional scaling to specify M.bC [default = 1]
 % M.beta   - optional scaling to specify M.pC [default = 16]
+%          - if beta equals 0, sample variances will be used
 %
 % NB: the prior covariance of 2nd-level random effects is:
 %            exp(M.hE)*DCM{1}.M.pC/M.beta [default DCM{1}.M.pC/16]
 %
+% NB2:       to manually specify which parameters should be assigned to 
+%            which covariance components, M.Q can be set to a cell array of 
+%            [nxn] binary matrices, where n is the number of DCM 
+%            parameters. A value of M.Q{i}(n,n)==1 indicates that parameter 
+%            n should be modelled with component i.
+%
 % M.Xnames - cell array of names for second level parameters [default: {}]
 % 
 % field    - parameter fields in DCM{i}.Ep to optimise [default: {'A','B'}]
-%          	 'All' will invoke all fields. This argument effectively allows 
-%          	 one to specify the parameters that constitute random effects.     
+%            'All' will invoke all fields. This argument effectively allows 
+%            one to specify the parameters that constitute random effects.     
 % 
 % PEB      - hierarchical dynamic model
 % -------------------------------------------------------------------------
-%     PEB.Snames 	- string array of first level model names
-%     PEB.Pnames 	- string array of parameters of interest
-%     PEB.Pind   	- indices of parameters in spm_vec(DCM{i}.Ep) 
+%     PEB.Snames    - string array of first level model names
+%     PEB.Pnames    - string array of parameters of interest
+%     PEB.Pind      - indices of parameters in spm_vec(DCM{i}.Ep) 
 %     PEB.Xnames - names of second level parameters
 % 
-%     PEB.M.X  		- second level (between-subject) design matrix
-%     PEB.M.W  		- second level (within-subject) design matrix
-%     PEB.M.Q  		- precision [components] of second level random effects 
-%     PEB.M.pE 		- prior expectation of second level parameters
-%     PEB.M.pC 		- prior covariance of second level parameters
-%     PEB.M.hE 		- prior expectation of second level log-precisions
-%     PEB.M.hC 		- prior covariance of second level log-precisions
-%     PEB.Ep		- posterior expectation of second level parameters
-%     PEB.Eh   		- posterior expectation of second level log-precisions
-%     PEB.Cp  		- posterior covariance of second level parameters
-%     PEB.Ch   		- posterior covariance of second level log-precisions
-%     PEB.Ce   		- expected  covariance of second level random effects
-%     PEB.F    		- free energy of second level model
+%     PEB.M.X       - second level (between-subject) design matrix
+%     PEB.M.W       - second level (within-subject) design matrix
+%     PEB.M.Q       - precision [components] of second level random effects 
+%     PEB.M.pE      - prior expectation of second level parameters
+%     PEB.M.pC      - prior covariance of second level parameters
+%     PEB.M.hE      - prior expectation of second level log-precisions
+%     PEB.M.hC      - prior covariance of second level log-precisions
+%     PEB.Ep        - posterior expectation of second level parameters
+%     PEB.Eh        - posterior expectation of second level log-precisions
+%     PEB.Cp        - posterior covariance of second level parameters
+%     PEB.Ch        - posterior covariance of second level log-precisions
+%     PEB.Ce        - expected  covariance of second level random effects
+%     PEB.F         - free energy of second level model
 %
-% DCM    		- 1st level (reduced) DCM structures with empirical priors
+% DCM           - 1st level (reduced) DCM structures with empirical priors
 %
 %          If DCM is an an (N x M} array, hierarchical inversion will be
 %          applied to each model (i.e., each row) - and PEB will be a 
@@ -82,7 +90,7 @@ function [PEB,P]   = spm_dcm_peb(P,M,field)
 % Copyright (C) 2015-2016 Wellcome Trust Centre for Neuroimaging
  
 % Karl Friston
-% $Id: spm_dcm_peb.m 6778 2016-04-22 11:51:29Z guillaume $
+% $Id: spm_dcm_peb.m 7720 2019-11-27 12:45:04Z peter $
  
 
 % get filenames and set up
@@ -101,7 +109,6 @@ try
     P   = spm_dem2dcm(P);
 end
 
-
 % check parameter fields and design matrices
 %--------------------------------------------------------------------------
 try, load(P{1}); catch, DCM = P{1}; end
@@ -115,6 +122,8 @@ if nargin < 3; field = {'A','B'};  end
 if strcmpi(field,'all');  field = fieldnames(DCM.M.pE);end
 if ischar(field), field = {field}; end
 
+try, maxit = M.maxit; catch, maxit = 64; end
+
 % repeat for each model (column) if P is an array
 %==========================================================================
 if size(P,2) > 1
@@ -126,69 +135,101 @@ if size(P,2) > 1
     return
 end
 
-
 % get (first level) densities (summary statistics)
 %==========================================================================
+
+% select DCM parameters
+% -------------------------------------------------------------------------
 Ns    = numel(P);                               % number of subjects
 if isfield(M,'bC') && Ns > 1
     q = spm_find_pC(M.bC,M.bE,field);           % parameter indices
+elseif isnumeric(field)
+    q = field;                                  % parameter indices
 else
     q = spm_find_pC(DCM,field);                 % parameter indices
 end
-Pstr  = spm_fieldindices(DCM.M.pE,q);           % field names 
-Np    = numel(q);                               % number of parameters
+
+% prepare field names
+% -------------------------------------------------------------------------
+try
+    Pstr  = spm_fieldindices(DCM.M.pE,q);       % field names 
+catch
+    if isfield(DCM,'Pnames')
+        % PEB given as input. Field names have form covariate:fieldname
+        Pstr  = [];
+        for i = 1:length(DCM.Xnames)
+            str  = strcat(DCM.Xnames{i}, ': ', DCM.Pnames);
+            Pstr = [Pstr; str];
+        end
+    else
+        % Generate field names
+        q = q(:);
+        Pstr  = strcat('P', cellstr(num2str(q)));
+    end
+end
+
+% count parameters
+Np = numel(q);                               
 if Np == 1
     Pstr = {Pstr}; 
 end
 
+% read and unpack DCM(s)
+% -------------------------------------------------------------------------
 for i = 1:Ns
     
-    % get first(within subject) level DCM
-    %----------------------------------------------------------------------
+    % get DCM
     try, load(P{i}); catch, DCM = P{i}; end
     
-    % posterior densities over all parameters
-    %----------------------------------------------------------------------
+    % get prior and posterior densities over all parameters
     if isstruct(DCM.M.pC)
         pC{i} = diag(spm_vec(DCM.M.pC));
     else
         pC{i} = DCM.M.pC;
     end
-    pC{i} = pC{i};
     pE{i} = spm_vec(DCM.M.pE);
     qE{i} = spm_vec(DCM.Ep);
     qC{i} = DCM.Cp;
     
-    % deal with rank deficient priors
-    %----------------------------------------------------------------------
+    % check priors
     if i == 1
-        PE = pE{i}(q);
-        PC = pC{i}(q,q);
-        U  = spm_svd(PC);
         Ne = numel(pE{i});
-    else
-        if numel(pE{i}) ~= Ne
-            error('Please ensure all DCMs have the same parameterisation');
-        end
     end
+    if numel(pE{i}) ~= Ne
+        error('Please ensure all DCMs have the same parameterisation');
+    end
+    
+    % and get the free energy of model with full priors
+    iF(i) = DCM.F;
+    
+end
 
+% deal with variability across subjects' priors (arithmetic mean)
+% -------------------------------------------------------------------------
+PE = spm_zeros(pE{1}(q));
+PC = spm_zeros(pC{1}(q,q));
+for i = 1:Ns
+    PE = PE + pE{i}(q);
+    PC = PC + pC{i}(q,q);
+end
+PE = PE ./ Ns;
+PC = PC ./ Ns;
+
+% deal with rank deficient priors
+% -------------------------------------------------------------------------
+U = spm_svd(PC);
+
+for i = 1:Ns
     % select parameters in field
-    %----------------------------------------------------------------------
     pE{i} = U'*pE{i}(q); 
     pC{i} = U'*pC{i}(q,q)*U; 
     qE{i} = U'*qE{i}(q); 
     qC{i} = U'*qC{i}(q,q)*U;
     
     % shrink posterior to accommodate inefficient inversions
-    %----------------------------------------------------------------------
     if Ns > 1
        qC{i} = spm_inv(spm_inv(qC{i}) + spm_inv(pC{i})/16);
-    end
-    
-    % and free energy of model with full priors
-    %----------------------------------------------------------------------
-    iF(i) = DCM.F;
-    
+    end        
 end
 
 % hierarchical model design and defaults
@@ -196,11 +237,21 @@ end
 
 % second level model
 %--------------------------------------------------------------------------
-if  isfield(M,'beta'), alpha  = M.alpha; else, alpha = 1;         end
-if  isfield(M,'beta'), beta   = M.beta;  else, beta  = 16;        end
-if  isfield(M,'Q'),    OPTION = M.Q;     else, OPTION = 'single'; end
-if ~isfield(M,'W'),    M.W    = speye(Np,Np);                     end
+if  isfield(M,'alpha'), alpha  = M.alpha; else, alpha = 1;        end
+if  isfield(M,'beta'),  beta   = M.beta;  else, beta  = 16;       end
+if ~isfield(M,'W'),     M.W    = speye(Np,Np);                    end
 
+% covariance component specification
+%--------------------------------------------------------------------------
+Q = {};
+if ~isfield(M,'Q')
+    OPTION = 'single';
+elseif iscell(M.Q) && isnumeric(M.Q{1})
+    OPTION = 'manual';
+    Q = M.Q;
+else
+    OPTION = M.Q;
+end
 
 % design matrices
 %--------------------------------------------------------------------------
@@ -242,16 +293,31 @@ if isfield(M,'bE')
 else
     M.bE = PE;
 end
+
+% prior covariance of (e.g.,) group effects
+%--------------------------------------------------------------------------
 if isfield(M,'bC')
     if isstruct(M.bC),    M.bC = diag(spm_vec(M.bC)); end
     if size(M.bC,1) > Np && Ns > 1, M.bC = M.bC(q,q); end
 else
     M.bC = PC/alpha;
 end
+
+% between (e.g.,) subject covariances (for precision components Q)
+%--------------------------------------------------------------------------
 if isfield(M,'pC')
     if isstruct(M.pC),    M.pC = diag(spm_vec(M.pC)); end
     if size(M.pC,1) > Np && Ns > 1, M.pC = M.pC(q,q); end
+elseif ~beta
+    
+    % If beta = 0, use variance of MAP estimators
+    %----------------------------------------------------------------------
+    M.pC = diag(var(spm_cat(qE),1,2));
+    
 else
+    
+    % otherwise, use a scaled prior covariance
+    %----------------------------------------------------------------------
     M.pC = PC/beta;
 end
 
@@ -260,43 +326,74 @@ end
 %--------------------------------------------------------------------------
 pQ    = spm_inv(U'*M.pC*U);
 rP    = pQ;
-Q     = {};
 switch OPTION
     
     case{'single'}
+        
         % one between subject precision component
         %------------------------------------------------------------------
         Q = {pQ};
         
     case{'fields'}
+        
         % between subject precision components (one for each field)
         %------------------------------------------------------------------
+        pq    = spm_inv(M.pC);
         for i = 1:length(field)
             j    = spm_fieldindices(DCM.M.pE,field{i});
-            j    = find(ismember(q,j));
+            j    = find(ismember(q,j));            
             Q{i} = sparse(Np,Np);
-            Q{i}(j,j) = pQ(j,j);
+            Q{i}(j,j) = pq(j,j);
             Q{i} = U'*Q{i}*U;
         end
         
     case{'all'}
+        
         % between subject precision components (one for each parameter)
         %------------------------------------------------------------------
+        pq    = spm_inv(M.pC);
+        k     = 1;
         for i = 1:Np
-            Q{i} = sparse(i,i,pQ(i,i),Np,Np);
-            Q{i} = U'*Q{i}*U;
+            qk = sparse(i,i,pq(i,i),Np,Np);            
+            qk = U'*qk*U;
+            if any(qk(:))
+                Q{k} = qk;
+                k    = k + 1;
+            end
         end
         
+    case {'manual'}
+        
+        % manually provided cell array of (binary) precision components
+        %------------------------------------------------------------------
+        pq = spm_inv(M.pC);
+        k = 1;
+        for i = 1:length(Q)
+            j       = find(diag(Q{i}));
+            j       = find(ismember(q,j));
+            qk      = sparse(Np,Np);
+            qk(j,j) = pq(j,j);
+            qk      = U'*qk*U;
+            if any(qk(:))
+                Q{k} = qk;
+                k = k + 1;
+            end
+        end
+        
+    case {'none'}
+        % Do nothing
+        
     otherwise
+        warning('Unknown covariance component specification');
 end
 
 
 % number of parameters and effects
 %--------------------------------------------------------------------------
-Nx    = size(X,2);                  % number of between subject effects
-Nw    = size(W,2);                  % number of within  subject effects
-Ng    = numel(Q);                   % number of precision components
-Nb    = Nw*Nx;                      % number of second level parameters
+Nx    = size(X,2);                   % number of between subject effects
+Nw    = size(W,2);                   % number of within  subject effects
+Ng    = numel(Q);                    % number of precision components
+Nb    = Nw*Nx;                       % number of second level parameters
 
 % check for user-specified priors on log precision of second level effects
 %--------------------------------------------------------------------------
@@ -317,8 +414,8 @@ end
 Xe    = spm_speye(Nx,1);
 bE    = kron(Xe,U'*M.bE);            % prior expectation of group effects
 gE    = zeros(Ng,1) + gE;            % prior expectation of log precision
-bC    = kron(Xc,U'*M.bC*U);          % prior covariance of group effects
-gC    = eye(Ng,Ng)*gC;               % prior covariance of log precision
+bC    = kron(Xc,U'*M.bC*U);          % prior covariance  of group effects
+gC    = eye(Ng,Ng)*gC;               % prior covariance  of log precision
 bP    = spm_inv(bC);
 gP    = spm_inv(gC);
 
@@ -332,17 +429,17 @@ ipC   = spm_cat({bP [];
 % variational Laplace
 %--------------------------------------------------------------------------
 t     = -4;                         % Fisher scoring parameter
-for n = 1:64
+for n = 1:maxit
 
-    % compute prior precision (with a lower bound of pQ/4096)
+    % compute prior precision (with a lower bound of pQ/exp(8))
     %----------------------------------------------------------------------
     if Ng > 0
-        rP   = pQ/4096;        
+        rP   = pQ*exp(-8);        
         for i = 1:Ng
             rP = rP + exp(g(i))*Q{i};
         end
     end
-    rC      = spm_inv(rP);
+    rC    = spm_inv(rP);
     
     % update model parameters
     %======================================================================
@@ -392,7 +489,7 @@ for n = 1:64
     Cp    = spm_inv(-dFdpp);
     Cb    = spm_inv(-dFdbb);
     Cg    = spm_inv(-dFdgg);
-    
+                 
     % second level complexity component of free energy
     %----------------------------------------------------------------------
     Fb    = b'*bP*b;
@@ -423,7 +520,7 @@ for n = 1:64
         
         % otherwise, retrieve expansion point and increase regularisation
         %------------------------------------------------------------------
-        t  = t - 1;
+        t  = max(t - 1,-4);
         load('tmp.mat');
         
     end
@@ -431,17 +528,26 @@ for n = 1:64
 
     % Fisher scoring
     %----------------------------------------------------------------------
-    dp      = spm_dx(dFdpp,dFdp,{t});
-    [db,dg] = spm_unvec(dp,b,g);
-    b       = b + db;
-    g       = g + dg;
+    dp     = spm_dx(dFdpp,dFdp,{t});
+    
+    % Suppress conditional dependencies for stable convergence
+    %------------------------------------------------------------------
+    if norm(dp,1) < 8, else
+        dFdpp = spm_cat({dFdbb [];
+                         [] dFdgg});
+        dp    = spm_dx(dFdpp,dFdp,{t});
+    end
+    
+    [db,dg]   = spm_unvec(dp,b,g);
+    b         = b + db;
+    g         = g + tanh(dg);
     
     % Convergence
     %======================================================================
     if ~isfield(M,'noplot')
         fprintf('VL Iteration %-8d: F = %-3.2f dF: %2.4f  [%+2.2f]\n',n,full(F),full(dF),t); 
     end
-    if t < -4 || (dF < 1e-4 && n > 4)
+    if (n > 4) && (t <= -4 || dF < 1e-4)
         fprintf('VL Iteration %-8d: F = %-3.2f dF: %2.4f  [%+2.2f]\n',n,full(F),full(dF),t); 
         break
     end
@@ -530,6 +636,10 @@ PEB.Ch   = Cg;
 PEB.Cp   = Ub*Cb*Ub';
 PEB.Ce   = U*rC*U';
 PEB.F    = F;
+
+for i = 1:length(Q)
+    PEB.M.Q{i} = U*Q{i}*U';
+end
 
 spm_unlink('tmp.mat');
 

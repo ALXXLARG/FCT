@@ -9,7 +9,7 @@ function cat_vol_correct_slice_scaling(varargin)
 % To control the filter direction and number of iterations we test the 
 % if one gradient is untpyical high. If this is the case the filter is
 % applyed for this direction as long as all gradient get more similar.
-% In most cases only 1-3 interations are necessary.
+% In most cases only 1-3 iterations are necessary.
 % The filter use information from the foreground (object/tissue) to 
 % estimate the correction filed. Background information are used to 
 % stabilize the estimation of the WM threshhold. 
@@ -29,11 +29,13 @@ function cat_vol_correct_slice_scaling(varargin)
 %   job.ub          .. upper intensity boundary
 %
 % ______________________________________________________________________
-% Robert Dahnke 
-% Structural Brain Mapping Group
-% University Jena
 %
-% $Id: cat_vol_correct_slice_scaling.m 1118 2017-03-17 15:57:00Z gaser $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_vol_correct_slice_scaling.m 1791 2021-04-06 09:15:54Z gaser $
 % ______________________________________________________________________
 
 % ______________________________________________________________________
@@ -59,7 +61,7 @@ function cat_vol_correct_slice_scaling(varargin)
 % 
 % - Other methods:
 %   - Slice correction also by 'caret_command -volume-bias-correction'?
-%     - not full automatic, no direction / interation criteria
+%     - not full automatic, no direction / iteration criteria
 %   - SLED log correction?
 %   - 
 
@@ -418,7 +420,7 @@ function cimg = smoothslice(img,s,method,dim)
  elseif method==2 % spm-smoothing approach - bad boundary properies, even if I correct for the mean intensity
     sx = repmat(s,1,3); sx(dim) = 0; ofs = mean(img(:));
     cimg = double(img-ofs); spm_smooth(cimg,cimg,sx); cimg = single(cimg+ofs);
- else % christian all smoothing approach - not realy smooth
+ else % christian all smoothing approach - not really smooth
     x = [-s:s];
     x = exp(-(x).^2/(2*(s).^2));
     x = x/sum(x);

@@ -1,4 +1,4 @@
-function cat_surf_surf2roi(job)
+function varargout = cat_surf_surf2roi(job)
 % ______________________________________________________________________
 % Function to read surface data for atlas maps and create ROI files.
 % The function create CSV, as well as XML files.
@@ -16,9 +16,13 @@ function cat_surf_surf2roi(job)
 %   job.avg     .. parameter what averaging is use for each ROI
 %                  struct('mean',1,'std',1,'min',0,'max',0,'median',1);  
 % ______________________________________________________________________
-% Robert Dahnke
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
 % ______________________________________________________________________
-% $Id: cat_surf_surf2roi.m 1100 2017-01-10 15:24:06Z gaser $ 
+% $Id: cat_surf_surf2roi.m 1981 2022-04-04 07:23:37Z gaser $ 
 
 
 % ______________________________________________________________________
@@ -48,7 +52,7 @@ function cat_surf_surf2roi(job)
     
   % split job and data into separate processes to save computation time
   if isfield(job,'nproc') && job.nproc>0 && (~isfield(job,'process_index'))
-    cat_parallelize(job,mfilename,'cat_surf_surf2roi');
+    cat_parallelize(job,mfilename,'cdata'); %,'cat_surf_surf2roi');
     return
   elseif isfield(job,'printPID') && job.printPID 
     cat_display_matlab_PID
@@ -59,20 +63,17 @@ function cat_surf_surf2roi(job)
   
   % if rdata is not defined use default atlases
   if ~isfield(job,'rdata')
-    job.rdata = cat_vol_findfiles(fullfile(spm('dir'),'toolbox','cat12','atlases_surfaces'),{'lh.aparc_a2009s.*','lh.aparc_DK40.*'});
+    job.rdata = cat_vol_findfiles(fullfile(spm('dir'),'toolbox','cat12','atlases_surfaces'),{'lh.aparc_*'});
   end
   
   spm_progress_bar('Init',numel(job.rdata) * sum(cellfun('length',job.cdata)),'Atlases','Atlases Completed');
+    
+  %% ROI evaluation
+  FN = fieldnames(job.avg);
   
-  %% write results
-  if cat_get_defaults('extopts.subfolders')
-    surffolder  = 'surf';
-    labelfolder = 'label';
-  else
-    surffolder  = '';
-    labelfolder = '';
-  end 
-  
+  xmlname = cell(numel(job.cdata{1}),1);
+
+  [tmp, pth_templates] = fileparts(cat_get_defaults('extopts.pth_templates'));
   % processing
   [CATrel, CATver] = cat_version; counter = 1; 
   for ri=1:numel(job.rdata)
@@ -87,12 +88,12 @@ function cat_surf_surf2roi(job)
         [vertices, lrdata, colortable, lrcsv] = cat_io_FreeSurfer('read_annotation',job.rdata{ri});
         [vertices, rrdata, colortable, rrcsv] = cat_io_FreeSurfer('read_annotation',char(cat_surf_rename(job.rdata{ri},'side','rh')));
         clear vertices colortable;
-      case 'gii';
+      case 'gii'
         % gifti and csv-files
-        rrdata = gifti(job.rdata{ri});
-        lrdata = gifti(char(cat_surf_rename(rinfo,'side','rh'))); 
+        lrdata = gifti(job.rdata{ri});
+        rrdata = gifti(char(cat_surf_rename(rinfo,'side','rh'))); 
         
-        rdatacsv = cat_vol_findfiles(strrep(rinfo.pp,'atlases_surfaces','templates_1.50mm'),[rinfo.dataname '*.csv']);
+        rdatacsv = cat_vol_findfiles(strrep(rinfo.pp,'atlases_surfaces',pth_templates),[rinfo.dataname '*.csv']);
         if ~isempty(rdatacsv{1})
           rcsv=cat_io_csv(rdatacsv{1});
         end
@@ -101,7 +102,7 @@ function cat_surf_surf2roi(job)
         lrdata = cat_io_FreeSurfer('read_surf_data',job.rdata{ri});
         rrdata = cat_io_FreeSurfer('read_surf_data',char(cat_surf_rename(rinfo,'side','rh'))); 
         
-        rdatacsv = cat_vol_findfiles(strrep(rinfo.pp,'atlases_surfaces','templates_1.50mm'),[rinfo.dataname '*.csv']);
+        rdatacsv = cat_vol_findfiles(strrep(rinfo.pp,'atlases_surfaces',pth_templates),[rinfo.dataname '*.csv']);
         if ~isempty(rdatacsv{1})
           rcsv=cat_io_csv(rdatacsv{1});
         end
@@ -110,17 +111,41 @@ function cat_surf_surf2roi(job)
     
     %% process the cdata files of each subject
     for si=1:numel(job.cdata{1}) % for each subject
+      [mrifolder, reportfolder, surffolder, labelfolder] = cat_io_subfolders(job.cdata{1}{si});
       for ti=1:numel(job.cdata)  % for each texture
       
         % check for kind of surface
         sinfo = cat_surf_info(job.cdata{ti}{si},0);
         
         if all(~cell2mat(strfind({'central','hull','sphere','sphere.reg','resampledBySurf2roi'},sinfo.dataname)))
-
+          
+          % RD202108: resampled data but without given filename information
+          if size(lrdata,1) == 163842 
+            type = '164k';
+          elseif size(lrdata,1) == 32492
+            type = '32k';
+          end
+          
+          % RD202108: data without structured filename
+          if isempty(sinfo.name)
+            sinfo.name = sinfo.ff;
+          end
+          
           % load surface cdata 
-          if job.resamp && sinfo.resampled==0 % do temporary resampling
-            lCS = get_resampled_values(job.cdata{ti}{si},job.debug);
-            rCS = get_resampled_values(cat_surf_rename(sinfo,'side','rh'),job.debug); 
+          if job.resamp && (sinfo.resampled==0 && sinfo.resampled_32k==0) % do temporary resampling
+            lCS = get_resampled_values(job.cdata{ti}{si},job.debug,type);
+            rCS = get_resampled_values(cat_surf_rename(sinfo,'side','rh'),job.debug,type); 
+          elseif strcmp(sinfo.side,'mesh')
+            switch sinfo.ee
+              case '.gii'
+                CS  = gifti(job.cdata{ti}{si});
+                CS  = export(CS,'patch');
+                CS  = CS.facevertexcdata;
+              otherwise
+                CS = cat_io_FreeSurfer('read_surf_data',job.cdata{ti}{si});
+            end
+            lCS.cdata = CS(1:32492);
+            rCS.cdata = CS(32492:end); 
           else
             switch sinfo.ee
               case '.gii'
@@ -128,7 +153,7 @@ function cat_surf_surf2roi(job)
                 rCS = gifti(char(cat_surf_rename(sinfo,'side','rh'))); 
               otherwise
                 lCS = cat_io_FreeSurfer('read_surf_data',job.cdata{ti}{si});
-                rCS = cat_io_FreeSurfer('read_surf_data',cat_surf_rename(sinfo,'side','rh')); 
+                rCS = cat_io_FreeSurfer('read_surf_data',char(cat_surf_rename(sinfo,'side','rh')));
             end
           end
 
@@ -136,13 +161,13 @@ function cat_surf_surf2roi(job)
           clear ccsv; 
           switch rinfo.ee
             case '.annot'
-              catROI{si}.(rinfo.dataname).ids(1:2:size(rrcsv,1)*2-2,1)   = cell2mat(rrcsv(2:end,1));
-              catROI{si}.(rinfo.dataname).ids(2:2:size(rrcsv,1)*2-2,1)   = cell2mat(lrcsv(2:end,1));
-              catROI{si}.(rinfo.dataname).names(1:2:size(rrcsv,1)*2-2,1) = rrcsv(2:end,2);
-              catROI{si}.(rinfo.dataname).names(2:2:size(rrcsv,1)*2-2,1) = lrcsv(2:end,2);
+              catROI{si}.(rinfo.dataname).ids(1:2:size(lrcsv,1)*2-2,1)   = cell2mat(lrcsv(2:end,1));
+              catROI{si}.(rinfo.dataname).ids(2:2:size(rrcsv,1)*2-2,1)   = cell2mat(rrcsv(2:end,1));
+              catROI{si}.(rinfo.dataname).names(1:2:size(lrcsv,1)*2-2,1) = lrcsv(2:end,2);
+              catROI{si}.(rinfo.dataname).names(2:2:size(rrcsv,1)*2-2,1) = rrcsv(2:end,2);
               for roii=1:2:numel(catROI{si}.(rinfo.dataname).ids)-1
-                catROI{si}.(rinfo.dataname).names{roii}   = ['l' catROI{si}.(rinfo.dataname).names{roii}];
-                catROI{si}.(rinfo.dataname).names{roii+1} = ['r' catROI{si}.(rinfo.dataname).names{roii+1}];
+                catROI{si}.(rinfo.dataname).names{roii,1}   = ['l' catROI{si}.(rinfo.dataname).names{roii}];
+                catROI{si}.(rinfo.dataname).names{roii+1,1} = ['r' catROI{si}.(rinfo.dataname).names{roii+1}];
               end 
             otherwise
               catROI{si}.(rinfo.dataname).ids      = rcsv(1:end,1);
@@ -151,8 +176,6 @@ function cat_surf_surf2roi(job)
           catROI{si}.(rinfo.dataname).comments = {'cat_surf_surf2roi'};
           catROI{si}.(rinfo.dataname).version  = CATver; 
 
-          %% ROI evaluation
-          FN = fieldnames(job.avg);
           for ai=1:numel(FN)
             if job.avg.(FN{ai})
               if sum(cell2mat(struct2cell(job.avg)))==1 && strcmp(FN{1},'mean')
@@ -160,28 +183,32 @@ function cat_surf_surf2roi(job)
               else
                 fieldname = sprintf('%s_%s',FN{ai},sinfo.dataname);
               end
+              if strcmpi(spm_check_version,'octave'), maxchar = 127; else, maxchar = 1023; end
+              fieldname = cat_io_strrep(fieldname,num2cell(char([33:47,124:maxchar])),'_');
+              fieldname = cat_io_strrep(fieldname,'__','_');
               switch FN{ai}
                 case {'min','max'},           nanfunc = ''; 
                 case {'mean','median','std'}, nanfunc = 'cat_stat_nan';
               end
+              
               for roii=1:numel(catROI{si}.(rinfo.dataname).ids)
                 switch catROI{si}.(rinfo.dataname).names{roii}(1)
-                  case 'l', catROI{si}.(rinfo.dataname).data.(fieldname)(roii) = ...
+                  case 'l', catROI{si}.(rinfo.dataname).data.(fieldname)(roii,1) = ...
                       eval(sprintf('%s%s(lCS.cdata(lrdata==catROI{si}.(rinfo.dataname).ids(roii)))',nanfunc,FN{ai}));
-                  case 'r', catROI{si}.(rinfo.dataname).data.(fieldname)(roii) = ...
+                  case 'r', catROI{si}.(rinfo.dataname).data.(fieldname)(roii,1) = ...
                       eval(sprintf('%s%s(rCS.cdata(rrdata==catROI{si}.(rinfo.dataname).ids(roii)))',nanfunc,FN{ai})); 
-                  case 'b', catROI{si}.(rinfo.dataname).data.(fieldname)(roii) = ...
+                  case 'b', catROI{si}.(rinfo.dataname).data.(fieldname)(roii,1) = ...
                       eval(sprintf(['%s%s(lCS.cdata(lrdata==catROI{si}.(rinfo.dataname).ids(roii))) + ' ...
                                     '%s%s(rCS.cdata(rrdata==catROI{si}.(rinfo.dataname).ids(roii)))'],nanfunc,FN{ai},nanfunc,FN{ai}));
-                  otherwise, catROI{si}.(rinfo.dataname).data.(fieldname)(roii) = nan; 
+                  otherwise, catROI{si}.(rinfo.dataname).data.(fieldname)(roii,1) = nan; 
                 end
               end
               
               % write xml data
-              cat_io_xml(fullfile(strrep(sinfo.pp,[filesep surffolder],''),labelfolder,...
-                ['catROIs_' sinfo.name '.xml']),catROI{si},'write+'); 
+              xmlname{si} = fullfile(strrep(sinfo.pp,surffolder,labelfolder),['catROIs_' sinfo.name '.xml']);
+              cat_io_xml(xmlname{si},catROI{si},'write+'); 
               
-              % delete temporary resampled files
+              % delete temporarily resampled files
               if exist(char(cat_surf_rename(sinfo,'dataname',[sinfo.dataname '.resampledBySurf2roi'],'ee','')),'file')
                 delete(char(cat_surf_rename(sinfo,'dataname',[sinfo.dataname '.resampledBySurf2roi'],'ee','')));
               end
@@ -196,25 +223,21 @@ function cat_surf_surf2roi(job)
       end
     end
   end
-  %%
-%   for si=1:numel(job.cdata{1})   
-%     % xml-export one file for all (this is a structure)
-%     try
-%       cat_io_xml(fullfile(strrep(sinfo.pp,[filesep surffolder],''),labelfolder,...
-%         ['catROIs_' sinfo.name '.xml']),catROI{si},'write+'); 
-%     catch
-%       disp(1)
-%     end
-%   end
-  %%
+
   spm_progress_bar('Clear');
+
+  if nargout==1, varargout{1}.xmlname = xmlname; end
   
 end
 
-function resamp = get_resampled_values(P,debug)
-  fsavgDir = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces');
+function resamp = get_resampled_values(P,debug,type)
+  if ~exist('type','var'), type = '164k'; end
+  switch type
+    case '164k', fsavgDir = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces');
+    case '32k',  fsavgDir = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces_32k');
+  end   
   P = deblank(char(P));
-
+ 
   [pp,ff,ex]   = spm_fileparts(P);
 
   name = [ff ex];
@@ -232,12 +255,13 @@ function resamp = get_resampled_values(P,debug)
   Pfsavg     = fullfile(fsavgDir,[hemi '.sphere.freesurfer.gii']);
   Pmask      = fullfile(fsavgDir,[hemi '.mask']);
 
+  
   % check whether temporary resampled file already exists
   if ~exist(Pvalue,'file')
         
     % resample values using warped sphere 
     cmd = sprintf('CAT_ResampleSurf "%s" "%s" "%s" "%s" "%s" "%s"',Pcentral,Pspherereg,Pfsavg,Presamp,P,Pvalue);
-    [ST, RS] = cat_system(cmd); err = cat_check_system_output(ST,RS,debug,0);
+    err = cat_system(cmd,debug,0);
     delete(Presamp);
 
   end

@@ -22,54 +22,35 @@
       </div>
     </div>
     
-    <!-- TEXT --> 
+    <!-- 
+        Synchronize this with CAT12 manual "Naming convention of output files"
+    -->
+
     <div id="content">
       <h2>Naming convention of output files</h2>
       
       <p>
         Please note that the resulting files of CAT12 are organized in separate subfolders (e.g. mri, report, surf, label). If you don't want to use
-        subfolders you can change the option "cat12.extopts.subfolders" in <a href="matlab:open cat_defaults;">cat_defaults.m</a> to "0".
+        subfolders you can change the option "cat.extopts.subfolders" in <a href="matlab:open cat_defaults;">cat_defaults.m</a> to "0".
       </p>
       
       <h3>Images (saved in subfolder "mri")</h3>
-      <table width="540" border="0">
+      <table border="0">
         <tr>
-          <td width="203">Segmented Images:</td>
-          <td width="88">#p[0123]*</td>
-          <td width="235">[m[0]w]p[0123]*[_affine].nii</td>
+          <td>Segmented Images:</td>
+          <td>[m[0]w]p[0123]*[_affine].nii</td>
         </tr>
         <tr>
           <td>Bias, noise and intensity corrected T1 image:</td>
-          <td>#m*</td>
           <td>[w]m*.nii</td>
         </tr>
-<!-- 
         <tr>
-          <td>Atlas Maps:</td>
-          <td>#a*</td>
-          <td>[mw]a1*</td>
+          <td>Jacobian determinant::</td>
+          <td>wj_*.nii</td>
         </tr>
         <tr>
-          <td>Preprocessing Changes Map:</td>
-          <td>#pc*</td>
-          <td>[mw]pc*</td>
-        </tr>
-        <tr>
-          <td>Tissue Expectation Map:</td>
-          <td>#te*</td>
-          <td>[mw]te*</td>
-        </tr>
--->
-      </table>
-      <br />
-      <table border="0">
-        <tr>
-          <td>*</td>
-          <td>filename</td>
-        </tr>
-        <tr>
-          <td>#</td>
-          <td>image space prefix</td>
+          <td>Deformation field (inverse field):</td>
+          <td>y_*.nii (iy_*.nii)</td>
         </tr>
         <tr>
           <td><br /><b>Image space prefix:</b></td>
@@ -125,7 +106,7 @@
       <table border="0">
          <tr>
           <td width="70">SURF</td>
-          <td width="400">left, right hemisphere [ lh | rh ] </td>
+          <td width="400">left, right both hemisphere [ lh | rh ] </td>
         </tr>
         <tr>
           <td>TYPE</td>
@@ -151,7 +132,7 @@
         </tr>
         <tr>
           <td></td>
-          <td>sqrtsulc - sqrt-transformed values of sulcul depth based on the euclidian distance between the central surface and its convex hull</td>
+          <td>sqrtsulc - sqrt-transformed values of sulcal depth based on the euclidean distance between the central surface and its convex hull</td>
         </tr>
         <tr>
           <td></td>
@@ -164,20 +145,20 @@
         </tr>
       </table>
       
-      <h3>Surfaces in (normalized) template space (after resampling and smoothing; saved in subfolder "surf")</h3>
-      <p>FWHM.SURF.TYPE.resampled.*.gii</p>
+      <h3>Surfaces in (normalized) template space (after resampling and smoothing; saved in subfolder "surf" by default)</h3>
+      <p>FWHM.SURF.TYPE.RESAMP.*.gii</p>
       <table border="0">
          <tr>
           <td width="70">FWHM</td>
-          <td width="400">filtersize in FWHM after smoothing</td>
+          <td width="400">filtersize in FWHM after smoothing (e.g. s15)</td>
         </tr>
          <tr>
           <td width="70">SURF</td>
-          <td width="400">left, right hemisphere [ lh | rh ] </td>
+          <td width="400">left, right, or both hemispheres [ lh | rh | mesh] </td>
         </tr>
         <tr>
-          <td>TYPE</td>
-          <td>surface data file [ thickness | gyrification | fractaldimension | ... ]</td>
+          <td width="70">TYPE</td>
+          <td width="400">surface data file [ thickness | gyrification | fractaldimension | ... ]</td>
         </tr>
         <tr>
           <td></td>
@@ -185,7 +166,7 @@
         </tr>
         <tr>
           <td></td>
-          <td>sqrtsulc - sqrt-transformed values of sulcul depth based on the euclidian distance between the central surface and its convex hull</td>
+          <td>sqrtsulc - sqrt-transformed values of sulcal depth based on the euclidean distance between the central surface and its convex hull</td>
         </tr>
         <tr>
           <td></td>
@@ -195,6 +176,10 @@
         <tr>
           <td></td>
           <td>fractaldimension - fractal dimension values (cortical complexity)</td>
+        </tr>
+         <tr>
+          <td width="70">RESAMP</td>
+          <td width="400">resampling to 164k or 32k mesh [ resampled | resampled_32k ]</td>
         </tr>
       </table>
 

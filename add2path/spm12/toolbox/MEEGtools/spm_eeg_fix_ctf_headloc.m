@@ -26,7 +26,7 @@ function D = spm_eeg_fix_ctf_headloc(S)
 % Copyright (C) 2008 Institute of Neurology, UCL
 
 % Vladimir Litvak, Robert Oostenveld
-% $Id: spm_eeg_fix_ctf_headloc.m 6663 2016-01-08 16:45:32Z vladimir $
+% $Id: spm_eeg_fix_ctf_headloc.m 7579 2019-05-01 11:32:17Z vladimir $
 
 
 [Finter,Fgraph,CmdLine] = spm('FnUIsetup','Fix CTF head locations',0);
@@ -197,7 +197,7 @@ dewargrad = ctf2grad(D.origheader, 1);
 
 M = spm_eeg_inv_headcoordinates(dewarfid(:, 1), dewarfid(:, 2), dewarfid(:, 3));
 
-grad = ft_convert_units(ft_transform_sens(M, dewargrad), 'mm');
+grad = ft_convert_units(ft_transform_geometry(M, dewargrad), 'mm');
 
 D = sensors(D, 'MEG', grad);
 
@@ -206,7 +206,7 @@ fid.pnt = [];
 fid.fid.pnt = dewarfid';
 fid.unit = 'cm';
 
-fid = ft_convert_units(ft_transform_headshape(M, fid), 'mm');
+fid = ft_convert_units(ft_transform_geometry(M, fid), 'mm');
 
 D = fiducials(D, fid);
 
@@ -248,8 +248,6 @@ function [grad] = ctf2grad(hdr, dewar)
 %
 %    You should have received a copy of the GNU General Public License
 %    along with FieldTrip. If not, see <http://www.gnu.org/licenses/>.
-%
-% $Id: spm_eeg_fix_ctf_headloc.m 6663 2016-01-08 16:45:32Z vladimir $
 
 % My preferred ordering in the grad structure is:
 %   1st 151 coils are bottom coils of MEG channels

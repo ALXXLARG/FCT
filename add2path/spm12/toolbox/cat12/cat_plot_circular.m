@@ -61,8 +61,14 @@ function h = cat_plot_circular(data, opt)
 % Author: Oleg Komarov (oleg.komarov@hotmail.it)
 % Tested on R2013a Win7 64 and Vista 32
 % 15 jun 2013 - Created
-% _________________________________________________________________________
-% $Id: cat_plot_circular.m 1077 2016-11-15 20:07:42Z gaser $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_plot_circular.m 1791 2021-04-06 09:15:54Z gaser $
 
 % Number of color shades/buckets (large N simply creates many perceptually indifferent color shades)
 N      = 20;
@@ -296,7 +302,7 @@ function hh = doughnut(data,opt)
 %   based on pie.m
 %   Clay M. Thompson 3-3-94
 %   Copyright 1984-2005 The MathWorks, Inc.
-%   $Revision: 1077 $  $Date: 2016-11-15 21:07:42 +0100 (Di, 15 Nov 2016) $
+%   $Revision: 1791 $  $Date: 2021-04-06 11:15:54 +0200 (Di, 06 Apr 2021) $
 
 
 % go trough all data

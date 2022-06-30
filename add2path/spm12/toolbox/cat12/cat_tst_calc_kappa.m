@@ -21,11 +21,14 @@ function varargout=cat_tst_calc_kappa(P,Pref,opt)
 % ______________________________________________________________________
 % based on cg_calc_kappa by Christian Gaser
 %
-% Robert Dahnke 
-% Structural Brain Mapping Group
-% University Jena
+% ______________________________________________________________________
 %
-% $Id: cat_tst_calc_kappa.m 1136 2017-06-11 14:04:58Z dahnke $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_tst_calc_kappa.m 1850 2021-06-28 09:59:10Z dahnke $
 % ______________________________________________________________________
 %#ok<*AGROW>
 %#ok<*ASGLU>
@@ -59,7 +62,7 @@ function varargout=cat_tst_calc_kappa(P,Pref,opt)
  
   
 % first input - test data
-  if ~exist('P','var')
+  if ~exist('P','var') || isempty(P) || isempty(P{1})
     P = spm_select(Inf,'image','Select images to compare'); 
   else
     if isa(P,'cell'), if size(P,1)<size(P,2), P=P'; end; P=char(P); end
@@ -70,12 +73,12 @@ function varargout=cat_tst_calc_kappa(P,Pref,opt)
 % second input - ground truth
   V = spm_vol(P);
   n = numel(V);   % number of test cases
-  if ~exist('Pref','var')
+  if ~exist('Pref','var') || isempty(Pref) || (iscell(Pref) && isempty(Pref{1}))
     Pref = spm_select([1 n],'image','Select reference mask');
     Vref = spm_vol(Pref); 
   else
     Pref = cellstr(Pref);
-    if size(Pref,1)<size(Pref,2), Pref=Pref'; end; 
+    if size(Pref,1)<size(Pref,2), Pref=Pref'; end 
     Vref = spm_vol(char(Pref));
   end
   if isempty(V) || isempty(Vref), return; end 
@@ -92,6 +95,8 @@ function varargout=cat_tst_calc_kappa(P,Pref,opt)
   def.spaces      = 70; 
   def.finishsound = 0; 
   def.allkappa    = 1; 
+  def.th1         = 0.5; 
+  def.th2         = 0.5; 
   opt = cat_io_checkinopt(opt,def);
   
   
@@ -278,7 +283,7 @@ function varargout=cat_tst_calc_kappa(P,Pref,opt)
               maxv=max((vol1(:))); if maxv==255, vol1=vol1/maxv; else vol1=vol1/maxv; end
 
               [kappa_all, kappa, accuracy_all, accuracy, sensit_all, sensit, specif, confusion, dice, jaccard] = ...
-                cg_confusion_matrix(uint8((round(vol1(:))>0)+1), uint8((round(vol2(:))>0)+1), 2);
+                cg_confusion_matrix(uint8((round(vol1(:))>opt.th1)+1), uint8((round(vol2(:))>opt.th2)+1), 2);
 
               rms    = sqrt( cat_stat_nanmean( ( ( vol1(:) - vol2(:) ).^2 ) ));
               

@@ -2,30 +2,38 @@ function [chansel, trlsel, cfg] = rejectvisual_summary(cfg, data)
 
 % SUBFUNCTION for ft_rejectvisual
 
-% determine the initial selection of trials
-ntrl = length(data.trial);
-if isequal(cfg.trials, 'all') % support specification like 'all'
-  cfg.trials = 1:ntrl;
-end
-trlsel = false(1, ntrl);
-trlsel(cfg.trials) = true;
+% % determine the initial selection of trials
+%ntrl = length(data.trial);
+% if isequal(cfg.trials, 'all') % support specification like 'all'
+%   cfg.trials = 1:ntrl;
+% end
+% trlsel = false(1, ntrl);
+% trlsel(cfg.trials) = true;
+ntrl   = numel(data.trial);
+trlsel = true(1, ntrl); % there has been trial selection in the caller function
 
-% determine the initial selection of channels
-nchan = length(data.label);
-cfg.channel = ft_channelselection(cfg.channel, data.label); % support specification like 'all'
-chansel = false(1, nchan);
-chansel(match_str(data.label, cfg.channel)) = true;
+% % determine the initial selection of channels
+% nchan = length(data.label);
+% cfg.channel = ft_channelselection(cfg.channel, data.label); % support specification like 'all'
+% chansel = false(1, nchan);
+% chansel(match_str(data.label, cfg.channel)) = true;
+nchan   = numel(data.label);
+chansel = true(1, nchan); 
 
 % compute the sampling frequency from the first two timepoints
 fsample = 1/mean(diff(data.time{1}));
 
-% select the specified latency window from the data
-% here it is done BEFORE filtering and metric computation
-for i=1:ntrl
-  begsample = nearest(data.time{i}, cfg.latency(1));
-  endsample = nearest(data.time{i}, cfg.latency(2));
-  data.time{i} = data.time{i}(begsample:endsample);
-  data.trial{i} = data.trial{i}(:, begsample:endsample);
+% % select the specified latency window from the data
+% % here it is done BEFORE filtering and metric computation
+% for i=1:ntrl
+%   begsample = nearest(data.time{i}, cfg.latency(1));
+%   endsample = nearest(data.time{i}, cfg.latency(2));
+%   data.time{i} = data.time{i}(begsample:endsample);
+%   data.trial{i} = data.trial{i}(:, begsample:endsample);
+% end
+if ischar(cfg.latency)
+  cfg.latency(1) = min(cellfun(@min, data.time));
+  cfg.latency(2) = max(cellfun(@max, data.time));
 end
 
 % compute the offset from the time axes
@@ -165,37 +173,37 @@ if strcmp(info.metric, 'zvalue') || strcmp(info.metric, 'maxzvalue')
   runnum = 0;
   for i=1:info.ntrl
     dat = preproc(info.data.trial{i}, info.data.label, offset2time(info.offset(i), info.fsample, size(info.data.trial{i}, 2)), info.cfg.preproc); % not entirely sure whether info.data.time{i} is correct, so making it on the fly
-    runsum = runsum + sum(dat, 2);
-    runss  = runss  + sum(dat.^2, 2);
-    runnum = runnum + size(dat, 2);
+    runsum = runsum + nansum(dat, 2);
+    runss  = runss  + nansum(dat.^2, 2);
+    runnum = runnum + sum(isfinite(dat), 2);
   end
-  mval = runsum/runnum;
-  sd   = sqrt(runss/runnum - (runsum./runnum).^2);
+  mval = runsum./runnum;
+  sd   = sqrt(runss./runnum - (runsum./runnum).^2);
 end
 for i=1:info.ntrl
   ft_progress(i/info.ntrl, 'computing metric %d of %d\n', i, info.ntrl);
   dat = preproc(info.data.trial{i}, info.data.label, offset2time(info.offset(i), info.fsample, size(info.data.trial{i}, 2)), info.cfg.preproc); % not entirely sure whether info.data.time{i} is correct, so making it on the fly
   switch info.metric
     case 'var'
-      level(:, i) = std(dat, [], 2).^2;
+      level(:, i) = nanstd(dat, [], 2).^2;
     case 'min'
-      level(:, i) = min(dat, [], 2);
+      level(:, i) = nanmin(dat, [], 2);
     case 'max'
-      level(:, i) = max(dat, [], 2);
+      level(:, i) = nanmax(dat, [], 2);
     case 'maxabs'
-      level(:, i) = max(abs(dat), [], 2);
+      level(:, i) = nanmax(abs(dat), [], 2);
     case 'range'
-      level(:, i) = max(dat, [], 2) - min(dat, [], 2);
+      level(:, i) = nanmax(dat, [], 2) - nanmin(dat, [], 2);
     case 'kurtosis'
       level(:, i) = kurtosis(dat, [], 2);
     case '1/var'
-      level(:, i) = 1./(std(dat, [], 2).^2);
+      level(:, i) = 1./(nanstd(dat, [], 2).^2);
     case 'zvalue'
-      level(:, i) = mean( (dat-repmat(mval, 1, size(dat, 2)) )./repmat(sd, 1, size(dat, 2)) , 2);
+      level(:, i) = nanmean( (dat-repmat(mval, 1, size(dat, 2)) )./repmat(sd, 1, size(dat, 2)) , 2);
     case 'maxzvalue'
-      level(:, i) = max( ( dat-repmat(mval, 1, size(dat, 2)) )./repmat(sd, 1, size(dat, 2)) , [], 2);
+      level(:, i) = nanmax( ( dat-repmat(mval, 1, size(dat, 2)) )./repmat(sd, 1, size(dat, 2)) , [], 2);
     otherwise
-      error('unsupported method');
+      ft_error('unsupported method');
   end
 end
 ft_progress('close');
@@ -223,6 +231,7 @@ switch info.cfg.viewmode
     tmp(~info.chansel, :) = nan;
     tmp(:, ~info.trlsel)  = nan;
     imagesc(tmp);
+    caxis([min(tmp(:)) max(tmp(:))]);
   case 'hide'
     imagesc(level(info.chansel==1, info.trlsel==1));
     if ~all(info.trlsel)
@@ -266,7 +275,16 @@ end % switch
 if any(info.chansel) && any(info.trlsel)
   % don't try to rescale the axes if they are empty
   % have to use 0 as lower limit because in the single channel case ylim([1 1]) will be invalid
-  axis([0.8*xmin 1.2*xmax 0.5 ymax+0.5]);
+  range = [0.8*xmin 1.2*xmax 0.5 ymax+0.5];
+  % ensure that the horizontal and vertical range increase, also when negative
+  % see https://github.com/fieldtrip/fieldtrip/issues/1150
+  if range(1)>range(2)
+    range = range([2 1 3 4]);
+  end
+  if range(3)>range(4)
+    range = range([1 2 4 3]);
+  end
+  axis(range);
 end
 axis ij;
 set(info.axes(2), 'ButtonDownFcn', @toggle_visual);  % needs to be here; call to axis resets this property
@@ -513,7 +531,7 @@ uiresume;
 % end
 % if all(trls==0)
 %   % use visual selection
-%   update_log(info.output_box, sprintf('make visual selection of trials to be plotted seperately...'));
+%   update_log(info.output_box, sprintf('make visual selection of trials to be plotted separately...'));
 %   [x, y] = select2d;
 %   maxpertrl  = max(info.origlevel, [], 1);
 %   toggle = find(1:ntrl>=x(1) & ...
@@ -611,10 +629,17 @@ cfg_mp.layout  = info.cfg.layout;
 cfg_mp.channel = info.data.label(info.chansel);
 currfig = gcf;
 for n = 1:length(trls)
+  % ft_multiplotER should be able to make the selection, but fails due to http://bugzilla.fieldtriptoolbox.org/show_bug.cgi?id=2978
+  % that bug is hard to fix, hence it is solved here with a work-around
+  cfg_sd = [];
+  cfg_sd.trials = trls(n);
+  cfg_sd.avgoverrpt = 'yes';
+  cfg_sd.keeprpt = 'no';
+  tmpdata = ft_selectdata(cfg_sd, info.data);
+  
   figure()
-  cfg_mp.trials = trls(n);
   cfg_mp.interactive = 'yes';
-  ft_multiplotER(cfg_mp, info.data);
+  ft_multiplotER(cfg_mp, tmpdata);
   title(sprintf('Trial %i', trls(n)));
 end
 figure(currfig);

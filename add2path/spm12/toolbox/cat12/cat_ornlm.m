@@ -17,17 +17,23 @@ function out = cat_ornlm(in, v, f, h)
 %  April 2008                                                             
 % ***************************************************************************
 %
-% Christian Gaser
-% $Id: cat_ornlm.m 772 2015-11-18 11:02:01Z gaser $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_ornlm.m 1791 2021-04-06 09:15:54Z gaser $
 
-rev = '$Rev: 772 $';
+rev = '$Rev: 1791 $';
 
 disp('Compiling cat_ornlm.c')
 
 pth = fileparts(which(mfilename));
 p_path = pwd;
 cd(pth);
-mex -O cat_ornlm.c ornlm.c 
+mex -O cat_ornlm.c ornlm_float.c 
 cd(p_path);
 
 out = cat_ornlm(in, v, f, h);

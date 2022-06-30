@@ -1,15 +1,19 @@
 function [ftver, ftpath] = ft_version(command)
 
-% FT_VERSION returns the version and installation directory of FieldTrip
+% FT_VERSION returns the version of FieldTrip and the path where it is installed
 %
 % FieldTrip is not released with version numbers as "2.0", "2.1", etc. Instead, we
-% have a Subversion (SVN) development version and a daily FTP release version.
+% share our development version on http://github.com/fieldtrip/fieldtrip. You can
+% use git to make a local version of the repository. Furthermore, we make daily
+% releases of the code available as zip file on our FTP server.
 %
-% The SVN development version is labeled with the revision number like "rXXXXX",
-% where XXXX is the revision number.
+% If you use git with the development version, the version is labeled with the hash
+% of the latest commit like "128c693". You can access the specific version "XXXXXX"
+% at https://github.com/fieldtrip/fieldtrip/commit/XXXXXX.
 %
-% The daily FTP release version is packaged as a zip file and its version is
-% indicated with "YYMMDD" (year, month, day).
+% If you download the daily released version from our FTP server, the version is part
+% of the file name "fieldtrip-YYYYMMDD.zip", where YYY, MM and DD correspond to year,
+% month and day.
 %
 % Use as
 %   ft_version
@@ -17,9 +21,14 @@ function [ftver, ftpath] = ft_version(command)
 %   [ftver, ftpath] = ft_version
 % to get the version and the installation root directory.
 %
-% See also VERSION, VER
+% When using git with the development version, you can also get additional information with
+%   ft_version revision
+%   ft_version branch
+%   ft_version clean
+%
+% See also FT_PLATFORM_SUPPORTS, VERSION, VER, VERLESSTHAN
 
-% Copyright (C) 2012-2016, Eelke Spaak
+% Copyright (C) 2012-2019, Eelke Spaak, Robert Oostenveld
 %
 % This file is part of FieldTrip, see http://www.ru.nl/donders/fieldtrip
 % for the documentation and details.
@@ -51,13 +60,13 @@ ftpath = fileparts(mfilename('fullpath'));
 ftpath = ftpath(1:end-10); % strip away '/utilities' where this function is located
 
 if isempty(issvn)
-  % are we dealing with an SVN working copy of fieldtrip?
-  issvn = isdir(fullfile(ftpath, '.svn'));
+  % are we dealing with an SVN working copy of FieldTrip?
+  issvn = isfolder(fullfile(ftpath, '.svn'));
 end
 
 if isempty(isgit)
-  % are we dealing with an GIT working copy of fieldtrip?
-  isgit = isdir(fullfile(ftpath, '.git'));
+  % are we dealing with an GIT working copy of FieldTrip?
+  isgit = exist(fullfile(ftpath, '.git'), 'file');
 end
 
 if ispc
@@ -76,7 +85,7 @@ if issvn
   if status > 0
     if ~ispc
       % the command line tools will probably not be available on windows
-      warning('you seem to have an SVN development copy of FieldTrip, yet ''svn info'' does not work as expected');
+      ft_warning('you seem to have an SVN development copy of FieldTrip, yet ''svn info'' does not work as expected');
     end
     ftver = 'unknown';
   else
@@ -91,7 +100,7 @@ elseif isgit
   if status>0
     if ~ispc
       % the command line tools will probably not be available on windows
-      warning('you seem to have an GIT development copy of FieldTrip, yet ''git'' does not work as expected');
+      ft_warning('you seem to have an GIT development copy of FieldTrip, yet ''git'' does not work as expected');
     end
     ftver = 'unknown';
     
@@ -114,7 +123,7 @@ elseif isgit
           ftver = 'yes';
         end
       otherwise
-        error('unsupported command "%s"');
+        ft_error('unsupported command "%s"');
     end
     cd(olddir);
     
@@ -133,9 +142,17 @@ elseif isequal(regexp(ftpath, ['.*' filesep 'fieldtrip-20[0-9]{6}']), 1)
 else
   % get it from the Contents.m file in the FieldTrip release
   a = ver(ftpath);
-  ftver = a.Version;
+  if isempty(a)
+    ftver = 'unknown';
+  else
+    ftver = a.Version;
+  end
   
 end % if issvn, isgit or otherwise
+
+if strcmp(command, 'clean') && strcmp(ftver, 'unknown')
+  ftver = 'no';
+end
 
 if nargout==0
   fprintf('\nThis is FieldTrip, %s %s.\n\n', command, ftver);

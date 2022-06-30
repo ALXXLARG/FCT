@@ -1,9 +1,9 @@
-/* $Id: shoot_dartel.c 4875 2012-08-30 20:04:30Z john $ */
+/* $Id: shoot_dartel.c 7593 2019-05-20 18:58:16Z john $ */
 /* (c) John Ashburner (2011) */
 
-#include <mex.h>
 #include <math.h>
 #include <stdio.h>
+#include "mex.h"
 #include "shoot_optim3d.h"
 #include "shoot_diffeo3d.h"
 #include "shoot_regularisers.h"
@@ -78,6 +78,49 @@ static mwSignedIndex pow2(int k)
     for(j0=0; j0<k; j0++)
         td = td*2;
     return(td);
+}
+
+/* Sample n points
+ *  * s1 = f1(x,y,z)
+ *   * s2 = f2(x,y,z)
+ *    */
+static void sampn_vox(mwSize dm[], float F[], mwSize n, mwSize mm, double x, double y, double z, double v[])
+{
+    mwSignedIndex ix, iy, iz, ix1, iy1, iz1;
+    mwSize j, o000, o100, o010, o110, o001, o101, o011, o111;
+    mwSize tmpz, tmpy;
+    double dx1, dx2, dy1, dy2, dz1, dz2;
+
+    ix   = (mwSignedIndex)floor(x); dx1=x-ix; dx2=1.0-dx1;
+    iy   = (mwSignedIndex)floor(y); dy1=y-iy; dy2=1.0-dy1;
+    iz   = (mwSignedIndex)floor(z); dz1=z-iz; dz2=1.0-dz1;
+    ix   = bound(ix  ,dm[0]);
+    iy   = bound(iy  ,dm[1]);
+    iz   = bound(iz  ,dm[2]);
+    ix1  = bound(ix+1,dm[0]);
+    iy1  = bound(iy+1,dm[1]);
+    iz1  = bound(iz+1,dm[2]);
+
+    tmpz  = dm[1]*iz;
+    tmpy  = dm[0]*(iy + tmpz);
+    o000  = (mwSize)(ix +tmpy);
+    o100  = (mwSize)(ix1+tmpy);
+    tmpy  = dm[0]*(iy1 + tmpz);
+    o010  = (mwSize)(ix +tmpy);
+    o110  = (mwSize)(ix1+tmpy);
+    tmpz  = dm[1]*iz1;
+    tmpy  = dm[0]*(iy + tmpz);
+    o001  = (mwSize)(ix +tmpy);
+    o101  = (mwSize)(ix1+tmpy);
+    tmpy  = dm[0]*(iy1 + tmpz);
+    o011  = (mwSize)(ix +tmpy);
+    o111  = (mwSize)(ix1+tmpy);
+
+    for(j=0; j<n; j++, F += mm)
+    {
+        v[j] = ((F[o000]*dx2 + F[o100]*dx1)*dy2 + (F[o010]*dx2 + F[o110]*dx1)*dy1)*dz2
+             + ((F[o001]*dx2 + F[o101]*dx1)*dy2 + (F[o011]*dx2 + F[o111]*dx1)*dy1)*dz1;
+    }
 }
 
 /*
@@ -1089,7 +1132,7 @@ static void squaring(mwSize dm[], int k, int save_transf, float b[], float A[], 
             dt  = j00*(j11*j22-j12*j21)+j10*(j02*j21-j01*j22)+j20*(j01*j12-j02*j11);
 
             /* J'*b */
-            sampn(dm, b, 3, m, x, y, z, bs);
+            sampn_vox(dm, b, 3, m, x, y, z, bs);
             b0 = bs[0];
             b1 = bs[1];
             b2 = bs[2];
@@ -1099,7 +1142,7 @@ static void squaring(mwSize dm[], int k, int save_transf, float b[], float A[], 
             buf1[j+m*2] = dt*(b0*j02+b1*j12+b2*j22);
 
             /* J'*A*J */
-            sampn(dm, A, 6, m, x, y, z, as);
+            sampn_vox(dm, A, 6, m, x, y, z, as);
             a00 = as[0];
             a11 = as[1];
             a22 = as[2];
@@ -1179,8 +1222,8 @@ void iteration(mwSize dm[], int k, float v[], float g[], float f[], float jd[],
                float ov[], double ll[], float *buf)
 {
     float *sbuf;
-    float *b, *A;
-    double ssl, ssp, sc;
+    float *b, *A, sc;
+    double ssl, ssp;
     static double param[] = {1.0,1.0,1.0,0.0,0.0,0.0,0.0,0.0};
     mwSignedIndex m = dm[0]*dm[1]*dm[2];
     mwSignedIndex j;
@@ -1277,6 +1320,85 @@ void iteration(mwSize dm[], int k, float v[], float g[], float f[], float jd[],
     fmg3(dm, A, b, param, cycles, its, sbuf, sbuf+3*m); 
     for(j=0; j<m*3; j++) ov[j] = v[j] - sbuf[j];
 }
+
+/*
+ * Attempt to unwrap the deformations.
+ * Note: this is not always guaranteed to work,
+ * but it should for most cases.
+ */
+static void unwrap(mwSize dm[], float f[])
+{
+    mwSize i0, i1, i2;
+
+    if (get_bound()!=0)
+        return;
+
+    for(i2=0; i2<dm[2]; i2++)
+    {
+        float *pt = f + (i2+2*dm[2])*dm[0]*dm[1];
+        if (i2==0)
+        {
+            for(i1=0; i1<dm[1]*dm[0]; i1++)
+                pt[i1] = pt[i1]-(float)floor((double)(pt[i1]/dm[2])+0.5)*(float)dm[2];
+        }
+        else
+        {
+            for(i1=0; i1<dm[1]*dm[0]; i1++)
+                pt[i1] = pt[i1]-(float)floor((double)((pt[i1]-pt[i1-dm[0]*dm[1]])/dm[2])+0.5)*(float)dm[2];
+        }
+    }
+
+    for(i1=0; i1<dm[1]; i1++)
+    {
+        float *pt = f + (i1+dm[2]*dm[1])*dm[0];
+        if (i1==0)
+        {
+            for(i2=0; i2<dm[2]; i2++)
+            {
+                float *pPsi1 = pt+i2*dm[0]*dm[1];
+                for(i0=0; i0<dm[0]; i0++)
+                {
+                    pPsi1[i0] = pPsi1[i0]-(float)floor((double)(pPsi1[i0]/dm[1])+0.5)*(float)dm[1];
+                }
+            }
+        }
+        else
+        {
+            for(i2=0; i2<dm[2]; i2++)
+            {
+                float *pPsi1 = pt+i2*dm[0]*dm[1];
+                for(i0=0; i0<dm[0]; i0++)
+                {
+                    pPsi1[i0] = pPsi1[i0]-(float)floor((double)((pPsi1[i0]-pPsi1[i0-dm[0]])/dm[1])+0.5)*(float)dm[1];
+                }
+            }
+        }
+    }
+
+    for(i0=0; i0<dm[0]; i0++)
+    {
+        float *pt = f+i0;
+        if (i0==0)
+        {
+            for(i2=0; i2<dm[2]; i2++)
+            {
+                float *pPsi1 = pt + i2*dm[0]*dm[1];
+                for(i1=0; i1<dm[0]*dm[1]; i1+=dm[0])
+                    pPsi1[i1] = pPsi1[i1]-(float)floor((double)(pPsi1[i1]/dm[0])+0.5)*(float)dm[0];
+            }
+        }
+        else
+        {
+            for(i2=0; i2<dm[2]; i2++)
+            {
+                float *pPsi1 = pt + i2*dm[0]*dm[1];
+                for(i1=0; i1<dm[0]*dm[1]; i1+=dm[0])
+                    pPsi1[i1] = pPsi1[i1]-(float)floor((double)((pPsi1[i1]-pPsi1[i1-1])/dm[0])+0.5)*(float)dm[0];
+            }
+        }
+    }
+}
+
 
 void dartel_mexFunction(mwSize nlhs, mxArray *plhs[], mwSize nrhs, const mxArray *prhs[])
 {

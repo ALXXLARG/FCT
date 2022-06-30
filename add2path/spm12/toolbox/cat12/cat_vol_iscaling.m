@@ -1,5 +1,15 @@
 function clim = cat_vol_iscaling(cdata,plim)
-%%
+% clim = cat_vol_iscaling(cdata,plim). Intensity scaling. 
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_vol_iscaling.m 1834 2021-05-28 14:45:20Z dahnke $
+
+  cdata(isnan(cdata) | isinf(cdata))=[]; 
   ASD = min(0.02,max(eps,0.05*std(cdata))/max(abs(cdata))); 
   if ~exist('plim','var'), plim = [ASD 1-ASD]; end 
 

@@ -15,9 +15,9 @@ function MDP = DEM_demo_MDP_rule
 % the colour of the Centre cue is red, the correct colour is on the left
 % (and on the right if the queue is blue). Simulations are provided when
 % the agent knows the rules. This is then repeated in the absence
-% (nescience) of any knowledge about the rules to see if the agent can learn
-% causal structure through Bayesian belief updating of the likelihood array
-% (A).
+% (nescience) of any knowledge about the rules to see if the agent can
+% learn causal structure through Bayesian belief updating of the likelihood
+% array (A).
 %
 % We then consider the improvement in performance (in terms of variational
 % free energy, its constituent parts and performance) following Bayesian
@@ -32,7 +32,7 @@ function MDP = DEM_demo_MDP_rule
 % Copyright (C) 2005 Wellcome Trust Centre for Neuroimaging
 
 % Karl Friston
-% $Id: DEM_demo_MDP_rule.m 6814 2016-06-19 10:24:46Z karl $
+% $Id: DEM_demo_MDP_rule.m 7679 2019-10-24 15:54:07Z spm $
 
 % set up and preliminaries
 %==========================================================================
@@ -157,13 +157,10 @@ mdp.D = D;                      % prior over initial states
 
 mdp.Aname = {'what','where','feedback'};
 mdp.Bname = {'rule','colour','where','decision'};
-mdp.temp  = 1;
-
-mdp  = spm_MDP_check(mdp);
-
 
 % illustrate a single trial
 %==========================================================================
+mdp  = spm_MDP_check(mdp);
 MDP  = spm_MDP_VB_X(mdp);
 
 % show belief updates (and behaviour)
@@ -342,6 +339,8 @@ for n = n
     subplot(3,2,4), spm_MDP_A_plot(sdp{n}.a),  title(str,     'Fontsize',16)
 end
 
+% return % here for short demo
+
 % Bayesian model reduction with dreaming
 %--------------------------------------------------------------------------
 OPTIONS.o = {MDP.o};
@@ -486,7 +485,7 @@ for m = 1:Ns
         RDP(i).s  = RDP(i).s(:,1);
     end
     rng(m)
-    RDP   = spm_MDP_VB_X(RDP,OPT);
+    RDP      = spm_MDP_VB_X(RDP,OPT);
     [F,Fu]   = spm_MDP_F(RDP);
     Rm(:,m)  = F(:);
     Rum(:,m) = Fu(:);
@@ -563,7 +562,7 @@ end
 return
 
 
-% confidence – negatively over policies
+% confidence - negatively over policies
 %--------------------------------------------------------------------------
 for i = 1:numel(MDP)
     p     = MDP(i).R;

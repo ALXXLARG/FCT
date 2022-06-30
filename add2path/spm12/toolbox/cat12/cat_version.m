@@ -1,18 +1,25 @@
-function [CATrel, CATver]  = cat_version(varargin)
+function [CATrel, CATver, CATdate]  = cat_version(varargin)
 % check for CAT revision
 %
+% FORMAT [CATrel, CATver, CATdata] = cat_version
 % FORMAT [CATrel, CATver] = cat_version
 % FORMAT CATver = cat_version % short version
 % FORMAT cat_version('[ss]fnbanner'[,str,ver]) % display banner
 % 
 % This function will retrieve the CAT release and version and is a
-% modified version of spm_version.m
-%_______________________________________________________________________
-% Christian Gaser
-% $Id: cat_version.m 964 2016-07-20 13:42:29Z dahnke $
+% modified version of spm('version')
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_version.m 1791 2021-04-06 09:15:54Z gaser $
 
 persistent CAT_VER;
 v = CAT_VER;
+
 if isempty(CAT_VER)
     v = struct('Name','','Version','','Release','','Date','');
     % try Contents.txt and then Contents.m
@@ -33,12 +40,13 @@ if isempty(CAT_VER)
         v.Version = t{2};
         v.Release = t{3}(2:end-1);
         %v.User    = 'gaser';
-        
+    end
+    try 
         %% v2 based on the CHANGES.txt
         vfile = fullfile(spm('Dir'),'toolbox','cat12','CHANGES.txt');
         if exist(vfile,'file')
           fid = fopen(vfile,'rt'); ct = textscan(fid,'%s','delimiter','\n'); fclose(fid);
-          t  = textscan(ct{1}{end},'%s','delimiter',' '); t = t{1};
+          t  = textscan(ct{1}{2},'%s','delimiter',' '); t = t{1};
           v2.Date     = t{5};
           v2.Version  = t{1}(2:end); 
           %v2.User     = t{3};
@@ -50,6 +58,7 @@ if isempty(CAT_VER)
     end
     CAT_VER = v;
 end
+
 if nargin>0, Action = varargin{1}; else Action = ''; end
 switch Action
   case {'fnbanner','sfnbanner','ssfnbanner'}  %-Text banners for functions
@@ -90,5 +99,7 @@ switch Action
     fprintf('%s\n%s',time,tab)
     fprintf('%s',repmat(lch,1,wid)),fprintf('\n')
 end
-CATrel = v.Release;
-CATver = v.Version;
+
+CATrel  = v.Release;
+CATver  = v.Version;
+CATdate = v.Date;

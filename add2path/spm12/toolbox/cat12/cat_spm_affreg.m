@@ -36,9 +36,15 @@ function [M,scal] = cat_spm_affreg(VG,VF,flags,M,scal)
 %
 %_______________________________________________________________________
 % Copyright (C) 2008 Wellcome Trust Centre for Neuroimaging
-
 % John Ashburner
-% $Id: cat_spm_affreg.m 1125 2017-04-21 14:45:00Z gaser $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_spm_affreg.m 1791 2021-04-06 09:15:54Z gaser $
 
 
 if nargin<5, scal = ones(length(VG),1); end;
@@ -94,7 +100,8 @@ end;
 % Generate points to sample from, adding some jitter in order to
 % make the cost function smoother.
 % ---------------------------------------------------------------
-rand('state',0); % want the results to be consistant.
+% want the results to be consistant.
+if exist('rng','file') == 2, rng('default'); rng(0); else, rand('state',0); randn('state',0); end
 dg   = VG(1).dim(1:3);
 df   = VF(1).dim(1:3);
 

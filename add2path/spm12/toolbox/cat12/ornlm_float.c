@@ -1,6 +1,11 @@
-/*
- * Christian Gaser
- * $Id: ornlm_float.c 595 2014-09-03 06:40:06Z dahnke $ 
+/* ______________________________________________________________________
+ *
+ * Christian Gaser, Robert Dahnke
+ * Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+ * Departments of Neurology and Psychiatry
+ * Jena University Hospital
+ * ______________________________________________________________________
+ * $Id: ornlm_float.c 1791 2021-04-06 09:15:54Z gaser $ 
  *
  *
  * This code is a modified version of ornlm.c 

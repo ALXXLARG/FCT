@@ -4,22 +4,24 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
 % spmtype for a specific range. Add the prefix pre and the description 
 % desc to V. 
 %
-%   VO = cat_io_write_nii(Y,V[,pre,desc,spmtype,range,write,addpre,transform,YM,YMth])
+%   VO = cat_io_write_nii(Y,V [folder,pre,desc,spmtype,range,write,addpre,transform,YM,YMth])
 %
 %   Y       = input volume
 %   V       = input volume structure
 %   VO      = ouput volume structure
 %   folder  = subfolder for writing data (default='')
 %   pre     = prefix for filename (default='')
-%   desc    = description that is added to the origin description (default='')
+%   desc    = description that is added to the origin description 
+%             (default='CAT#R#')
 %   spmtype = spm image type (default given by the class of Y)
 %   write   = [native warped modulated dartel]
-%               native    0/1   (none/yes)
-%               warped    0/1   (none/yes)
-%               modulated 0/1/2 (none/affine+nonlinear/nonlinear only)
-%               dartel    0/1/2 (none/rigid/affine)
+%               native    0/1     (none/yes)
+%               warped    0/1     (none/yes)
+%               modulated 0/1/2/3 (none/affine+nonlinear/nonlinear only/both)
+%               dartel    0/1/2/3 (none/rigid/affine/both)
 %   transform = transformation data to write the image to warped, 
 %               modulated, or dartel space (see cat_main)
+%    .push  = use push rather than pull
 %   YM      = mask for the final image (i.e. save thickness and ROIs)
 %   YMth    = threshold for YM 
 %
@@ -27,18 +29,27 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
 %   
 %
 % ______________________________________________________________________
-% Robert Dahnke, Christian Gaser
-% Structural Brain Mapping Group
-% University Jena
 %
-% $Id: cat_io_writenii.m 1117 2017-03-16 15:31:20Z dahnke $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_io_writenii.m 1820 2021-05-02 22:27:25Z gaser $
 %
 %#ok<*WNOFF,*WNON,*ASGLU>
   
   % file name
+  [cv,cr]      = cat_version;
   if ~exist('pre','var'),  pre  = ''; end
-  if ~exist('desc','var'), desc = ''; end
-
+  if ~exist('desc','var'), desc = sprintf('%sR%s ',cv,cr); end
+  if exist('transform','var') && isfield(transform,'warped')
+    if isfield(transform.warped,'push'), push = transform.warped.push; else, push = 0; end
+    if ~isfield(transform.warped,'w') && ~isfield(transform.warped,'yi'), push = 1; end 
+  else 
+    push = 1; 
+  end
+  
   % image type and convertations
   if ~exist('spmtype','var')
     switch class(Y)
@@ -49,6 +60,13 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
       case {'uint8','char'},    spmtype = 'uint8'; 
       case 'uint16',            spmtype = 'uint16';
       case 'uint32',            spmtype = 'uint32'; 
+      case {'single','double'}, spmtype = 'float32'; 
+      otherwise
+    end
+  else
+    switch spmtype
+      case 'logical',           spmtype = 'uint8';   
+      case 'char',              spmtype = 'uint8'; 
       case {'single','double'}, spmtype = 'float32'; 
       otherwise
     end
@@ -79,12 +97,30 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
   if ~exist(fullfile(pp,folder),'dir'), mkdir(fullfile(pp,folder)); end
   
   
+  % deal with label maps 
+  switch class(Y)
+    case {'single','double'}
+      labelmap = 0;
+    case {'uint8','uint16'}
+      if all(range == [0 1]); 
+        labelmap = 1; 
+        Y = single(Y); 
+      else
+        labelmap = 0;
+      end
+    otherwise
+      labelmap = 0;
+  end
+  
+  % RD20200619: Just to be safe, there was an error in the BWP MS1.
+  Y = real(Y); 
+  
   % write native file
   % ____________________________________________________________________
   if write(1)==1
-    fname = io_handle_pre(V.fname,pre,'',folder);
+    filename = io_handle_pre(V.fname,pre,'',folder);
     if exist('transform','var') && isfield(transform,'native')
-      if any(size(Y)~=transform.native.Vo.dim)
+      if any(size(Y(:,:,:,1,1))~=transform.native.Vo.dim)
         nV = transform.native.Vi;
       else
         nV = transform.native.Vo;
@@ -92,20 +128,14 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
     else
       nV = V;
     end
-    if exist(fname,'file'), delete(fname); end
+    if exist(filename,'file'), delete(filename); end
 
     N         = nifti;
-    N.dat     = file_array(fname,nV.dim(1:3),[spm_type(spmtype) ...
+    N.dat     = file_array(filename,nV.dim(1:3),[spm_type(spmtype) ...
                   spm_platform('bigend')],range(1),range(2),0);
     N.mat     = nV.mat;
-
-    % do not change mat0 - 20150612 
-    % its a new image! 20150916
-    warning off; 
-    N.mat0    = nV.mat;
-    warning on; 
-
-    if isempty(V.descrip), N.descrip = desc; else  N.descrip = [desc ' < ' V.descrip]; end
+    N.mat0    = nV.mat; % do not change mat0 - 20150612 - not changing, creating 20150916
+    if isempty(V.descrip), N.descrip = desc; else,  N.descrip = [desc ' < ' V.descrip]; end
     create(N);
     
     % final masking after transformation
@@ -121,12 +151,12 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
       end
     end
 
-    Vn = spm_vol(fname); 
+    Vn = spm_vol(filename); 
     % reduce to original native space if it was interpolated
-    if exist('transform','var') && isfield(transform,'native') && any(size(Y)~=transform.native.Vo.dim)
-      [pp,ff] = spm_fileparts(fname); 
+    if exist('transform','var') && isfield(transform,'native') && any(size(Y(:,:,:,1,1))~=transform.native.Vo.dim)
+      [pp,ff] = spm_fileparts(filename); 
       Vo = transform.native.Vo; 
-      Vo.fname = fname; 
+      Vo.fname = filename; 
       Vo.dt    = Vn.dt; 
       Vo.pinfo = Vn.pinfo;
       if strcmp(ff(1:2),'p0')
@@ -138,11 +168,15 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
         YMR = false(size(Yn));
         for i=1:4, YMR = YMR | (Yn>(i-1/rf) & Yn<(i+1/rf)); end
         Yn(YMR)     = Ynr(YMR); clear YMR Ynr;
-        delete(Vn.fname); % remove it, otherwise it will have the wrong filesize (correct readable, but still to big)
+        delete(Vn.fname); % remove it, otherwise it will have the wrong filesize (correct readable, but still too big)
+        Vn = spm_write_vol(Vn,double(Yn));
+      elseif labelmap
+        [Vn,Yn] = cat_vol_imcalc(Vn,Vo,'i1',struct('interp',0,'verb',0));
+        delete(Vn.fname); % remove it, otherwise it will have the wrong filesize (correct readable, but still too big)
         Vn = spm_write_vol(Vn,double(Yn));
       else
         [Vn,Yn] = cat_vol_imcalc(Vn,Vo,'i1',struct('interp',6,'verb',0));
-        delete(Vn.fname); % remove it, otherwise it will have the wrong filesize (correct readable, but still to big)
+        delete(Vn.fname); % remove it, otherwise it will have the wrong filesize (correct readable, but still too big)
         Vn = spm_write_vol(Vn,double(Yn));
       end
     end
@@ -159,20 +193,6 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
     [D,I] = cat_vbdist(single(Y)); Y(:)=Y(I(:)); clear D I; 
   end
   
-  % deal with label maps 
-  switch class(Y)
-    case {'single','double'}
-      labelmap = 0;
-    case {'uint8','uint16'}
-      if all(range == [0 1]); 
-        labelmap = 1; 
-        Y = single(Y); 
-      else
-        labelmap = 0;
-      end
-    otherwise
-      labelmap = 0;
-  end
   
   %% warped
   % ____________________________________________________________________
@@ -184,36 +204,40 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
   
   % interpolation to reduce artifacts if the resolution of the original 
   % image is similar or worse to that of the template resolution
-  if write(2) || write(3)
-    vx_vol   = sqrt(sum(transform.warped.M0(1:3,1:3).^2));  
-    vx_volt  = sqrt(sum(transform.warped.M1(1:3,1:3).^2));  
-    interpol = any(vx_vol>vx_volt) + any(vx_vol/2>vx_volt);
-    if interpol
-      YI = interp3(Y,interpol,'linear'); %yI = repmat(single(YI),1,1,1,3); 
-      %for i=1:3, yI(:,:,:,i) = interp3(transform.warped.yx(:,:,:,i),1,'linear'); end
-    else
-      YI = Y;
-      %yI = transform.warped.y; 
-    end
-  end
-  
   if write(2)
     pre2 = ['w'  pre]; desc2 = [desc '(warped)'];
     
-    fname = io_handle_pre(V.fname,pre2,'',folder);
-    if exist(fname,'file'), delete(fname); end
+    filename = io_handle_pre(V.fname,pre2,'',folder);
+    if exist(filename,'file'), delete(filename); end
     if labelmap==0
-      [wT,w]  = spm_diffeo('push',YI ,transform.warped.yx,transform.warped.odim(1:3));
-      % divide by jacdet to get unmodulated data
-      wT = wT./(w+0.001); 
+      if push
+        [wT,w] = spm_diffeo('push', Y, transform.warped.y, transform.warped.odim(1:3) );
+        wT = wT ./ max(eps,w);
+      else
+        try
+          wT = spm_diffeo('pull', Y, transform.warped.yi ); 
+        catch
+          wT = spm_diffeo('samp', Y, transform.warped.yi ); 
+        end
+        spm_smooth(wT,wT,transform.warped.fs);
+      end
     elseif labelmap==1
       % we can use modulated data throughout the following steps because the final maximum probability function
       % will be the same for modulated and unmodulated data
-      wT = zeros([transform.warped.odim(1:3),max(YI(:))],'uint8'); 
+      wT = zeros([transform.warped.odim(1:3),max(Y(:))],'uint8'); 
       % interpolate each label separately
-      for yi=1:max(YI(:)); 
-        wTi  = spm_diffeo('push',single(YI==yi),transform.warped.yx,transform.warped.odim(1:3)); 
-        wT(:,:,:,yi) = uint8(wTi*100); 
+      for yi=1:max(Y(:))
+        if push
+          wTi = spm_diffeo('push', single(Y==yi), transform.warped.y, transform.warped.odim(1:3) ); 
+        else
+          try
+            wTi = spm_diffeo('pull', single(Y==yi), transform.warped.yi ); 
+          catch
+            wTi = spm_diffeo('samp', single(Y==yi), transform.warped.yi ); 
+          end
+          spm_smooth(wTi,wTi,transform.warped.fs);
+        end
+        wT(:,:,:,yi) = uint8(wTi * 100); 
       end
       % use maximum probability function to get label again
       [wTmax,wT] = max(wT,[],4); 
@@ -222,15 +246,23 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
     
     % final masking after transformation
     if exist('YM','var')
-      [wTM,w] = spm_diffeo('push',YM,transform.warped.yx,transform.warped.odim(1:3));
-      wTM = wTM./(w+0.001); 
-      wTM = round(wTM*100)/100; 
-      wT  = wT .* (smooth3(wTM)>YMth);
+      if push
+        [wTM,w] = spm_diffeo('push', YM, transform.warped.y, transform.warped.odim(1:3) );
+        wT = wT ./ max(eps,w);
+      else
+        try
+          wTM = spm_diffeo('pull', YM, transform.warped.yi ); 
+        catch
+          wTM = spm_diffeo('samp', YM, transform.warped.yi ); 
+        end
+        spm_smooth(wTM,wTM,transform.warped.fs);
+      end
+      wT  = wT .* (wTM>YMth);
       clear w wTM;
     end
     
     N      = nifti;
-    N.dat  = file_array(fname,transform.warped.odim, ...
+    N.dat  = file_array(filename,transform.warped.odim, ...
               [spm_type(spmtype) spm_platform('bigend')], ...
               range(1),range(2),0);
     N.mat  = transform.warped.M1;
@@ -240,7 +272,7 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
     N.dat(:,:,:) = double(wT);
     clear N; 
     
-    if nargout>0, varargout{1}(2) = spm_vol(fname); end
+    if nargout>0, varargout{1}(2) = spm_vol(filename); end
     if nargout>1, varargout{2}{2} = wT; end
   end
 
@@ -248,65 +280,6 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
   
   %% modulated
   %  ___________________________________________________________________
-  %{ 
-  if write(3)
-    %% 
-    if write(3)==1 % SPM default with rigid transformation 
-      pre3  = ['mw'   pre];
-      desc3 = [desc '(Jac. sc. warped)'];
-    elseif write(3)==2
-      pre3 = ['m0w'  pre]; 
-      desc3 = [desc '(Jac. sc. warped non-lin only)']; 
-    end
-    if (write(3)==1 && transform.warped.dartel==1) || (write(3)==2 && transform.warped.dartel==2)
-    % for VBM Dartel, an affine registration was used and we now have to add the scaling factor
-
-    elseif (write(3)==1 && transform.warped.dartel==2) || (write(3)==2 && transform.warped.dartel==1)
-    % for VBM Shooting, a ridid registration was used and no further changes are required for standard SPM warped output
-
-    end
-
-    
-    fname = io_handle_pre(V.fname,pre3,'',folder);
-    if exist(fname,'file'), delete(fname); end
-    
-    [wT,wr] = spm_diffeo('push',YI,transform.warped.yx,transform.warped.odim(1:3)); 
-
-    % final masking after transformation
-    if exist('YM','var')
-      wTM = spm_diffeo('push',YM,transform.warped.yx,transform.warped.odim(1:3)); 
-      wT = wT .* (smooth3(wTM)>YMth);
-    end
-    
-    % filtering of the jacobian determinant
-    wrs = wr - 1; 
-    spm_smooth(wrs,wrs,3/abs(transform.warped.M1(1))); wrs = wrs + 1;
-    wT = spm_field(wr,wT ,[sqrt(sum(transform.warped.M1(1:3,1:3).^2)) 1e-6 1e-4 0  3 2]) .* wrs; 
-    clear wrs;
-  
-    % create image
-    N         = nifti;
-    N.dat     = file_array(fname,transform.warped.odim,...
-                  [spm_type(spmtype) spm_platform('bigend')], ...
-                  range(1),range(2),0);
-    N.mat     = transform.warped.M1;
-    N.mat0    = transform.warped.M1; 
-    if isempty(V.descrip), N.descrip = desc; else  N.descrip = [desc3 ' < ' V.descrip]; end
-    create(N);       
-    if write(3)==1
-      N.dat(:,:,:) = double(wT)*abs(det(transform.warped.M0(1:3,1:3))/ ...
-                     det(transform.warped.M1(1:3,1:3)));
-    elseif write(3)==2
-      N.dat(:,:,:) = double(wT)*abs(det(transform.warped.M2(1:3,1:3)));
-    end
-    clear N;
-    
-    if nargout>0, varargout{1}(3) = spm_vol(fname); end
-    if nargout>1, varargout{2}{3} = wT*abs(det(transform.warped.M2(1:3,1:3))); end
-  end
-  %}
- 
-  %% old code ...
   if write(3)
     for wi=1:2  
       %% 
@@ -318,65 +291,66 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
         continue
       end
 
-      fname = io_handle_pre(V.fname,pre3,'',folder);
-      if exist(fname,'file'), delete(fname); end
+      filename = io_handle_pre(V.fname,pre3,'',folder);
+      if exist(filename,'file'), delete(filename); end
 
-      [wT,w]  = spm_diffeo('push',YI,transform.warped.yx,transform.warped.odim(1:3));
-
-      % divide by jacdet to get unmodulated data
-      wT = wT./(w+0.001); 
-
-      % Modulation using spm_diffeo and push introduces aliasing artefacts,
-      % thus we use the def2det function of the inverted deformations to obtain the old and 
-      % in my view a more appropriate jacobian determinant 
-      % The 2nd reason to use the old modulation is compatibility with cat_vol_defs.m
-      Yy = spm_diffeo('invdef',transform.warped.y,transform.warped.odim,eye(4),transform.warped.M0);
-      w  = spm_diffeo('def2det',Yy)/det(transform.warped.M0(1:3,1:3));
-      clear Yy
-
-      % ensure that jacobian det is positive (no clue why some times the sign is switched)
-      if mean(w(~isnan(w))) < 0, w = -w; end 
-      w(:,:,[1 end]) = NaN; w(:,[1 end],:) = NaN; w([1 end],:,:) = NaN;
-      wT = wT.*w;
-
-      if interpol
-        %[wTo,wo]  = spm_diffeo('push',Y,transform.warped.y,transform.warped.odim(1:3));
-        %wT = wT * cat_stat_nansum(wTo(:))/cat_stat_nansum(wT(:)) * sum(Y(:))./sum(YI(:));
-        wT = wT * cat_stat_nansum(Y(:))/cat_stat_nansum(wT(:)); 
-      end
-      clear w
-
-      if exist('YM','var') % final masking after transformation
-        if interpol
-          YM = interp(YM,1,'linear'); 
+      if push 
+        wT = spm_diffeo('push', Y, transform.warped.y, transform.warped.odim(1:3) );
+      else
+        try
+          wT = spm_diffeo('pull', Y, transform.warped.yi );
+        catch
+          wT = spm_diffeo('samp', Y, transform.warped.yi );
         end
-        wTM = spm_diffeo('push',YM,transform.warped.yx,transform.warped.odim(1:3)); 
-        wT = wT .* (smooth3(wTM)>YMth);
+        wT = wT .* transform.warped.w;
+        spm_smooth(wT,wT,transform.warped.fs);
+      end
+      
+      if exist('YM','var') % final masking after transformation
+        if push
+          [wTM,w] = spm_diffeo('push', YM, transform.warped.y, transform.warped.odim(1:3)); 
+          wT = wT ./ max(eps,w);
+        else      
+          try
+            wTM = spm_diffeo('pull', YM, transform.warped.yi ); 
+          catch
+            wTM = spm_diffeo('samp', YM, transform.warped.yi ); 
+          end
+          spm_smooth(wTM,wWT,transform.warped.fs);
+        end      
+        wT = wT .* (wTM>YMth);
         clear YM;
       end
-     % clear yI
-
+     
       % scale the jacobian determinant 
       if (write(3)==1 || write(3)==3) && wi==1
-        wT = wT*abs(det(transform.warped.M0(1:3,1:3))/ ...
-                    det(transform.warped.M1(1:3,1:3)));
-      else
-        wT = wT*abs(det(transform.warped.M2(1:3,1:3)));
+        wT = wT * abs(det(transform.warped.M0(1:3,1:3)) / ...
+                      det(transform.warped.M1(1:3,1:3)));
+      else 
+        wT = wT * abs(det(transform.warped.M2(1:3,1:3)));
       end
-
+      
+      % check if the total original volume is equal to the total modulated volume
+      if isfield(transform.warped,'verb') && transform.warped.verb && ...
+        ( (write(3)==1 || write(3)==3) && wi==1) 
+        fprintf('\n  %s: %0.2f > %0.2f',pre3, ...
+          cat_stat_nansum(Y(:))  .* prod( sqrt( sum( transform.native.Vi.mat(1:3,1:3).^2 ) )) / 1000, ... % = indvidiudal vx_vol
+          cat_stat_nansum(wT(:)) .* prod( sqrt( sum( transform.warped.M1(1:3,1:3).^2 )     )) / 1000 );   % = template vx_vol
+      end
+      
       N         = nifti;
-      N.dat     = file_array(fname,transform.warped.odim, ...
+      N.dat     = file_array(filename,transform.warped.odim, ...
                       [spm_type(spmtype) spm_platform('bigend')], ...
                       range(1),range(2),0);
       N.mat     = transform.warped.M1;
       N.mat0    = transform.warped.M1; % do not change mat0 - 20150612 - not changing, creating 20150916
+      if isempty(V.descrip), N.descrip = desc3; else,  N.descrip = [desc3 ' < ' V.descrip]; end
       create(N);       
-      if isempty(V.descrip), N.descrip = desc3; else  N.descrip = [desc3 ' < ' V.descrip]; end
-
-      N.dat(:,:,:) = double(wT) ; % / 8^interpol; %
+      
+      N.dat(:,:,:) = double(wT) ;
       clear N;
 
-      if nargout>0, varargout{1}(3) = spm_vol(fname); end
+      if nargout>0, varargout{1}(3) = spm_vol(filename); end
       if nargout>1, varargout{2}{3} = wT; end
       clear wT
     end
@@ -399,9 +373,9 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
       end
 
      
-      fname = io_handle_pre(V.fname,pre4,post,folder);
-      if exist(fname,'file'), delete(fname); end
-      VraT = struct('fname',fname,'dim',transf.odim,...
+      filename = io_handle_pre(V.fname,pre4,post,folder);
+      if exist(filename,'file'), delete(filename); end
+      VraT = struct('fname',filename,'dim',transf.odim,...
            'dt',   [spm_type(spmtype) spm_platform('bigend')],...
            'pinfo',[range(2) range(1)]','mat',transf.mat);%[1.0 0]'
       VraT = spm_create_vol(VraT);
@@ -439,7 +413,7 @@ function varargout = cat_io_writenii(V,Y,folder,pre,desc,spmtype,range,writes,tr
         VraT = spm_write_plane(VraT,tmp,i);
       end
 
-      if nargout>0, varargout{1}(4) = spm_vol(fname); end
+      if nargout>0, varargout{1}(4) = spm_vol(filename); end
       if nargout>1, varargout{2}{4} = []; end
 
       

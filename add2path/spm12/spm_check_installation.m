@@ -13,10 +13,10 @@ function varargout = spm_check_installation(action)
 % Build signature of SPM distribution as used by 'full' option.
 % (for developers)
 %__________________________________________________________________________
-% Copyright (C) 2009-2016 Wellcome Trust Centre for Neuroimaging
+% Copyright (C) 2009-2019 Wellcome Trust Centre for Neuroimaging
 
 % Guillaume Flandin
-% $Id: spm_check_installation.m 6675 2016-01-12 18:22:29Z guillaume $
+% $Id: spm_check_installation.m 7752 2019-12-13 12:58:59Z guillaume $
 
 if isdeployed, return; end
 
@@ -41,17 +41,44 @@ end
 %==========================================================================
 function check_basic
 
+%-Platform: MATLAB, GNU Octave
+%--------------------------------------------------------------------------
+if exist('OCTAVE_VERSION','builtin')
+    platform = 'Octave';
+else
+    platform = 'MATLAB';
+end
+
+%-Initial check of the MATLAB path (for functions in fieldtrip/compat)
+%--------------------------------------------------------------------------
+if exist('ft_check_path') % this should not exist
+    p = mfilename('fullpath'); p = p(1:end-22); % cannot use fileparts
+    sw = warning('off','backtrace');
+    warning(sprintf([...
+        'You appear to have added all SPM subfolders to the function\n'...
+        'search path. This is NOT recommended.\n'...
+        'You only need to add SPM main directory; relevant subfolders\n'...
+        'will be automatically added by SPM when needed.\n'...
+        'You can clear the function search path by typing the following:\n'...
+        '    spm_rmpath\n'...
+        '    addpath(''%s'')\n'...
+        'For more information, type the following:\n'...
+        '    help pathtool'],p));
+    warning(sw);
+end
+
 %-Minimal MATLAB version required
 %--------------------------------------------------------------------------
+minVer = '7.4';
 try
-    v = spm_check_version('matlab','7.4');
+    v = spm_check_version('matlab',minVer);
 catch
     error('A problem occurred with spm_check_version.m.');
 end
 if v < 0
     error([...
-        'SPM12 requires MATLAB 7.4 onwards in order to run.\n'...
-        'This MATLAB version is %s\n'], version);
+        'SPM12 requires MATLAB %s onwards in order to run.\n'...
+        'This MATLAB version is %s.'], minVer, version);
 end
 
 %-Check installation
@@ -64,25 +91,26 @@ d = spm('Dir');
 p = textscan(path,'%s','delimiter',pathsep); p = p{1};
 if ~ismember(lower(d),lower(p))
     error(sprintf([...
-        'You do not appear to have the MATLAB search path set up\n'...
+        'You do not appear to have the function search path set up\n'...
         'to include your SPM12 distribution. This means that you\n'...
         'can start SPM in this directory, but if your change to\n'...
-        'another directory then MATLAB will be unable to find the\n'...
-        'SPM functions. You can use the pathtool command in MATLAB\n'...
-        'to set it up.\n'...
-        '    addpath %s\n'...
-        'For more information, try typing the following:\n'...
-        '    help path\n    help pathtool'],d));
+        'another directory then %s will be unable to find the\n'...
+        'SPM functions. You can use the addpath command in %s\n'...
+        'to set it up:\n'...
+        '    addpath(''%s'')\n'...
+        'For more information, type the following:\n'...
+        '    help path\n' ...
+        '    help pathtool'],platform,platform,d));
 end
 if ismember(lower(fullfile(d,'src')),lower(p))
     warning(sprintf([...
-        'You appear to have added all SPM subfolders to the MATLAB\n'...
-        'search path. This is not recommended.\n'...
-        'You only need to add SPM main directory; relevant subfolders '...
-        'will be\nautomatically added by SPM when needed.\n'...
-        'You can clear the MATLAB search path by typing the following:\n'...
+        'You appear to have added all SPM subfolders to the function\n'...
+        'search path. This is NOT recommended.\n'...
+        'You only need to add SPM main directory; relevant subfolders\n'...
+        'will be automatically added by SPM when needed.\n'...
+        'You can clear the function search path by typing the following:\n'...
         '    spm_rmpath\n'...
-        '    addpath %s\n'...
+        '    addpath(''%s'')\n'...
         'For more information, type the following:\n'...
         '    help pathtool'],d));
 end
@@ -97,7 +125,9 @@ if ~exist(fullfile(d,'@nifti','fieldnames.m'),'file') % File that should not hav
             'and the updates installed on top of this. Unix commands\n'...
             'to do this are:\n'...
             '   unzip spm12.zip\n'...
-            '   unzip -o spm12_updates_r????.zip -d spm12']));
+            '   unzip -o spm12_updates_r????.zip -d spm12\n'...
+            'For more information, type the following:\n'...
+            '    help spm_update']));
     else
         error(sprintf([...
             'There appears to be some problem with the installation.\n'...
@@ -122,7 +152,7 @@ if ispc
             'TAR file smart CR/LF conversion is disabled\n'...
             '(under the Miscellaneous Configuration Options).']));
     end
-    if ~exist(fullfile(d,'toolbox','dcm_meeg','spm_dcm_erp.m'),'file'),
+    if ~exist(fullfile(d,'toolbox','dcm_meeg','spm_dcm_erp.m'),'file')
         error(sprintf([...
             'There appears to be some problem with the installation.\n'...
             'This is probably something to do with the way that the\n'...
@@ -137,17 +167,27 @@ end
 try
     feval(@spm_bsplinc,1,ones(1,6));
 catch
+    if ismac
+        url = 'https://en.wikibooks.org/wiki/SPM/Installation_on_64bit_Mac_OS_(Intel)';
+    elseif isunix
+        url = 'https://en.wikibooks.org/wiki/SPM/Installation_on_64bit_Linux';
+    elseif ispc
+        url = 'https://en.wikibooks.org/wiki/SPM/Installation_on_64bit_Windows';
+    else
+        url = 'https://www.wikibooks.org/wiki/SPM#Installation';
+    end
+    if strcmpi(platform,'octave')
+        url = 'https://en.wikibooks.org/wiki/SPM/Octave#Compilation';
+    end
     error([...
         'SPM uses a number of MEX files, which are compiled functions.\n'...
         'These need to be compiled for the various platforms on which SPM\n'...
-        'is run. At the FIL, where SPM is developed, the number of\n'...
-        'computer platforms is limited.  It is therefore not possible to\n'...
-        'release a version of SPM that will run on all computers. See\n'...
-        '   %s%csrc%cMakefile and\n'...
-        '   http://en.wikibooks.org/wiki/SPM#Installation\n'...
-        'for information about how to compile mex files for %s\n'...
-        'in MATLAB %s.'],...
-        d,filesep,filesep,computer,version);
+        'is run. It seems that the compiled files for your computer platform\n'...
+        'are missing or not compatible. See\n'...
+        '   %s\n'...
+        'for information about how to compile MEX files for %s\n'...
+        'in %s %s.'],...
+        url,computer,platform,version);
 end
 
 %==========================================================================
@@ -161,14 +201,22 @@ fprintf('\n');
 disp( ' ___  ____  __  __                                           ' );
 disp( '/ __)(  _ \(  \/  )                                          ' );
 disp( '\__ \ )___/ )    (   Statistical Parametric Mapping          ' );
-disp(['(___/(__)  (_/\/\_)  SPM - http://www.fil.ion.ucl.ac.uk/spm/ ']);
+disp(['(___/(__)  (_/\/\_)  SPM - https://www.fil.ion.ucl.ac.uk/spm/']);
 fprintf('\n');
+
+%-
+%-------------------------------------------------------------------------------
+if exist('OCTAVE_VERSION','builtin')
+    software = 'Octave';
+else
+    software = 'MATLAB';
+end
 
 %-Detect SPM directory
 %--------------------------------------------------------------------------
-SPMdir = which('spm.m','-ALL');
+SPMdir = cellstr(which('spm.m','-ALL'));
 if isempty(SPMdir)
-    fprintf('SPM is not in your MATLAB path.\n');
+    fprintf('SPM is not in your %s path.\n',software);
     return;
 elseif numel(SPMdir) > 1
     fprintf('SPM seems to appear in several different folders:\n');
@@ -206,9 +254,10 @@ fprintf('SPM version is %s (%s, %s)\n', ...
 
 %-Detect SPM toolboxes
 %--------------------------------------------------------------------------
-officials = {'DARTEL', 'dcm_fnirs', 'dcm_meeg', 'DEM', 'FieldMap', ...
+officials = {'DAiSS', 'DARTEL', 'dcm_fnirs', 'dcm_meeg', 'DEM', 'FieldMap', ...
     'Longitudinal', 'mci', 'MEEGtools', 'mixture', 'mlm', 'Neural_Models', ...
-    'OldNorm', 'OldSeg', 'Shoot', 'spectral', 'SPEM_and_DCM', 'SRender'};
+    'NVC', 'OldNorm', 'OldSeg', 'Shoot', 'spectral', 'SPEM_and_DCM', ...
+    'SRender', 'TSSS'};
 dd = dir(fullfile(SPMdir,'toolbox'));
 dd = {dd([dd.isdir]).name};
 dd(strncmp('.',dd,1)) = [];
@@ -222,9 +271,9 @@ fprintf('\n');
 
 %-Detect MATLAB & toolboxes
 %--------------------------------------------------------------------------
-fprintf('MATLAB is installed in: %s\n',matlabroot);
-fprintf('MATLAB version is %s\n',version);
-fprintf('MATLAB toolboxes: '); hastbx = false;
+fprintf('%s is installed in: %s\n',software,matlabroot);
+fprintf('%s version is %s\n',software,version);
+fprintf('%s toolboxes: ',software); hastbx = false;
 if license('test','signal_toolbox') && ~isempty(ver('signal'))
     vtbx = ver('signal'); hastbx = true;
     fprintf('signal (v%s) ',vtbx.Version);
@@ -257,8 +306,13 @@ elseif ismac
     else
         platform = system_dependent('getos');
     end
-else    
-   platform = system_dependent('getos');
+else
+   try
+       platform = system_dependent('getos');
+   catch
+       [dummy, platform] = system('uname -sr');
+       platform = deblank(platform);
+   end
 end
 fprintf('OS: %s\n', platform);
 
@@ -283,23 +337,32 @@ fprintf(' (%dbit)\n', get(0,'ScreenDepth'));
 
 %-Detect OpenGL rendering
 %--------------------------------------------------------------------------
-S =  opengl('data');
-fprintf('OpenGL version: %s',S.Version);
-if S.Software, fprintf('(Software)\n'); else fprintf('(Hardware)\n'); end
-fprintf('OpenGL renderer: %s (%s)\n',S.Vendor,S.Renderer);
+if strcmpi(software,'matlab')
+    S =  opengl('data');
+    fprintf('OpenGL version: %s',S.Version);
+    if S.Software, fprintf('(Software)\n'); else fprintf('(Hardware)\n'); end
+    fprintf('OpenGL renderer: %s (%s)\n',S.Vendor,S.Renderer);
+end
 
 %-Detect MEX setup
 %--------------------------------------------------------------------------
 fprintf('MEX extension: %s\n',mexext);
 try
-    cc = mex.getCompilerConfigurations('C','Selected');
-    if ~isempty(cc)
-        cc = cc(1); % can be C or C++
-        fprintf('C Compiler: %s (%s).\n', cc.Name, cc.Version);
-        fprintf('C Compiler settings: %s (''%s'')\n', ...
-            cc.Details.CompilerExecutable, cc.Details.OptimizationFlags);
+    if ~exist('OCTAVE_VERSION','builtin')
+        cc = mex.getCompilerConfigurations('C','Selected');
+        if ~isempty(cc)
+            cc = cc(1); % can be C or C++
+            fprintf('C Compiler: %s (%s).\n', cc.Name, cc.Version);
+            fprintf('C Compiler settings: %s (''%s'')\n', ...
+                cc.Details.CompilerExecutable, cc.Details.OptimizationFlags);
+        else
+            fprintf('No C compiler is selected (see mex -setup)\n');
+        end
     else
-        fprintf('No C compiler is selected (see mex -setup)\n');
+        mkoctfile('--version');
+        fprintf('C Compiler: %s.\n', deblank(mkoctfile('--print','CC')));
+        fprintf('ALL_CFLAGS: %s.\n', deblank(mkoctfile('--print','ALL_CFLAGS')));
+        fprintf('ALL_LDFLAGS: %s.\n', deblank(mkoctfile('--print','ALL_LDFLAGS')));
     end
 end
 try
@@ -340,7 +403,13 @@ fprintf('%40s\n','...done');
 %-Parse it into a MATLAB structure
 %--------------------------------------------------------------------------
 fprintf('Parsing SPM information...');
-tree = xmlread(p);
+try
+    tree = xmlread(p);
+catch
+    fprintf('\nParsing failed\n');
+    delete(p);
+    return;
+end
 delete(p);
 r    = struct([]); ind = 1;
 if tree.hasChildNodes
@@ -514,7 +583,7 @@ for i=1:length(f)
     else l(end+1) = info;
     end
     if isempty(r) && strcmp(ext,'.m')
-        w = which(f{i},'-ALL');
+        w = cellstr(which(f{i},'-ALL'));
         if numel(w) > 1 && ~strcmpi(f{i},'Contents.m')
             if ~dispw, fprintf('\n'); end
             dispw = true;
@@ -549,14 +618,14 @@ sts = true;
 svnprops = struct('file',f, 'id',[], 'date','', 'md5','');
 
 fp  = fopen(f,'rt');
-str = fread(fp,Inf,'*uchar');
+str = fread(fp,'*uint8');
 fclose(fp);
-str = char(str(:)');
+str = native2unicode(str(:)','iso-8859-1');
 
 r = regexp(str,['\$Id: (?<file>\S+) (?<id>[0-9]+) (?<date>\S+) ' ...
                 '(\S+Z) (?<author>\S+) \$'],'names');
                 
-if isempty(r)
+if isempty(r) || isempty(r(1).file)
     %sts = false;
     %fprintf('\n%s has no SVN Id.\n',f);
 else

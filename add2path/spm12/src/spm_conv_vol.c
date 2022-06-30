@@ -1,5 +1,5 @@
 /*
- * $Id: spm_conv_vol.c 4452 2011-09-02 10:45:26Z guillaume $
+ * $Id: spm_conv_vol.c 7602 2019-06-05 14:34:18Z guillaume $
  * John Ashburner
  */
 
@@ -299,8 +299,8 @@ static int convxyz(MAPTYPE *vol, double filtx[], double filty[], double filtz[],
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
-        MAPTYPE *map, *get_maps();
-        int k, dtype = SPM_DOUBLE;
+    MAPTYPE *map, *get_maps();
+    int k, dtype = SPM_DOUBLE;
     double *offsets, *oVol = NULL;
     mxArray *wplane_args[3];
 
@@ -309,7 +309,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         mexErrMsgTxt("Incorrect usage.");
     }
     
-    map=get_maps(prhs[0], &k);
+    map = get_maps(prhs[0], &k);
     if (k!=1)
     {
         free_maps(map, k);
@@ -318,20 +318,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
     if (!mxIsNumeric(prhs[1]))
     {
-        /* The compiler doesn't like this line - but I think it's OK */
-        wplane_args[0] = (struct mxArray_tag *)prhs[1];
+        wplane_args[0] = (mxArray *)prhs[1];
         wplane_args[1] = mxCreateDoubleMatrix(map->dim[0],map->dim[1],mxREAL);
         wplane_args[2] = mxCreateDoubleMatrix(1,1,mxREAL);
         oVol = (double *)0;
     }
     else
     {
-        if (   mxIsComplex(prhs[1]) ||
+        if (mxIsComplex(prhs[1]) ||
             mxIsSparse(prhs[1]) ||
             mxGetM(prhs[1])*mxGetN(prhs[1]) != map->dim[0]*map->dim[1]*map->dim[2])
         {
             free_maps(map, 1);
-            mexErrMsgTxt("Bad output array");
+            mexErrMsgTxt("Bad output array.");
         }
         oVol = (double *)mxGetPr(prhs[1]);
 
@@ -346,13 +345,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         else mexErrMsgTxt("Unknown output datatype.");
     }
 
-        for(k=2; k<=5; k++)
+    for(k=2; k<=5; k++)
     {
-                if (!mxIsNumeric(prhs[k]) || mxIsComplex(prhs[k]) ||
-                        mxIsSparse(prhs[k]) || !mxIsDouble(prhs[k]))
+        if (!mxIsNumeric(prhs[k]) || mxIsComplex(prhs[k]) ||
+            mxIsSparse(prhs[k]) || !mxIsDouble(prhs[k]))
         {
             free_maps(map, 1);
-                        mexErrMsgTxt("Functions must be numeric, real, full and double.");
+            mexErrMsgTxt("Functions must be numeric, real, full and double.");
         }
     }
 

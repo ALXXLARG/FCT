@@ -34,7 +34,7 @@ function [f,dfdx,D,dfdu] = spm_fx_fmri(x,u,P,M)
 % Copyright (C) 2002-2014 Wellcome Trust Centre for Neuroimaging
 
 % Karl Friston & Klaas Enno Stephan
-% $Id: spm_fx_fmri.m 6855 2016-08-06 10:06:35Z karl $
+% $Id: spm_fx_fmri.m 7525 2019-02-05 16:47:50Z peter $
 
 % options
 %--------------------------------------------------------------------------
@@ -61,7 +61,7 @@ if size(x,2) == 5
     
     % if P.A encodes the eigenvalues of the (average) connectivity matrix
     %======================================================================
-    if isvector(P.A)
+    if isvector(P.A) && numel(P.A) > 1
         
         % excitatory connections
         %------------------------------------------------------------------
@@ -245,7 +245,7 @@ dfdu{2,1} = sparse(n*(m - 1),length(u(:)));
 % Hemodynamic Jacobian
 %==========================================================================
 dfdx{2,1} = speye(n,n);
-dfdx{2,2} = diag(-sd);
+dfdx{2,2} = speye(n,n)*(-sd);
 dfdx{2,3} = diag(-H(2)*x(:,3));
 dfdx{3,2} = diag( 1./x(:,3));
 dfdx{3,3} = diag(-x(:,2)./x(:,3));

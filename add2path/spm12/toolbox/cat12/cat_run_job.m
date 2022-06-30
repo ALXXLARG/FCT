@@ -2,13 +2,11 @@ function cat_run_job(job,tpm,subj)
 % run CAT 
 % ______________________________________________________________________
 %
-% Initialization function of the CAT preprocessing. 
+% Initialization functions for the CAT preprocessing
 %  * creation of the subfolder structure (if active)
 %  * check of image resolution (avoid scans with very low resolution)
-%  * noise correction (ISARNLM)
 %  * interpolation 
 %  * affine preprocessing (APP)
-%    >> cat_run_job_APP_SPM
 %    >> cat_run_job_APP_init
 %    >> cat_run_job_APP_final
 %  * affine registration
@@ -20,1126 +18,1312 @@ function cat_run_job(job,tpm,subj)
 %   tpm  .. tissue probability map (hdr structure)
 %   subj .. file name
 % ______________________________________________________________________
-% Christian Gaser
-% $Id: cat_run_job.m 1152 2017-07-05 12:28:08Z dahnke $
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_run_job.m 1980 2022-03-30 14:40:08Z gaser $
 
 %#ok<*WNOFF,*WNON>
 
-    % if there is a breakpoint in this file set debug=1 and do not clear temporary variables 
-    dbs   = dbstatus; debug = 0; for dbsi=1:numel(dbs), if strcmp(dbs(dbsi).name,mfilename); debug = 1; break; end; end
+  job.test_warnings  = 0; % just for tests
+  job.extopts.histth = [0.96 0.9999]; % histogram thresholds
+  % use "lower" first histth to deal with diffent low intensity BGs that 
+  % is corrected in case of highBG data
+  job.extopts.input  = 0; % 0 - auto (default), 1-with skull (normal), 2-skull-stripped, 3-high BG
 
-    global cat_err_res; % for CAT error report
+  if exist('rng','file') == 2, rng('default'); rng(0); else, rand('state',0); randn('state',0); end
+  
+  % if there is a breakpoint in this file set debug=1 and do not clear temporary variables 
+  dbs   = dbstatus; debug = 0; for dbsi=1:numel(dbs), if strcmp(dbs(dbsi).name,mfilename); debug = 1; break; end; end
+  
+  clearvars -global cat_err_res;
+  global cat_err_res; % for CAT error report
+  cat_err_res.stime        = clock; 
+  cat_err_res.cat_warnings = cat_io_addwarning('reset'); % reset warnings 
+  
+  stime  = clock; 
+  stime0 = stime; % overall processing time
 
-    stime = clock;
+  % create subfolders if not exist
+  pth = spm_fileparts(job.channel(1).vols{subj}); 
+  [mrifolder, reportfolder, surffolder, labelfolder] = cat_io_subfolders(job.channel(1).vols{subj},job);
 
-    % print current CAT release number and subject file
-    [n,r] = cat_version;
-    str  = sprintf('CAT12 r%s: %d/%d',r,subj,numel(job.channel(1).vols));
-    str2 = spm_str_manip(job.channel(1).vols{subj}(1:end-2),['a' num2str(70 - length(str))]);
-    cat_io_cprintf([0.2 0.2 0.8],'\n%s\n%s: %s%s\n%s\n',...
-          repmat('-',1,72),str,...
-          repmat(' ',1,70 - length(str) - length(str2)),str2,...
-          repmat('-',1,72));
-    clear r str str2
-
-    
-    
-    % create subfolders if not exist
-    pth = spm_fileparts(job.channel(1).vols{subj}); 
-    if job.extopts.subfolders
-      folders = {'mri','report'};
-      for i=1:numel(folders)
-        if ~exist(fullfile(pth,folders{i}),'dir')
-          mkdir(fullfile(pth,folders{i}));
+  if job.extopts.subfolders
+  
+    folders = {mrifolder,reportfolder};
+    warning('off', 'MATLAB:MKDIR:DirectoryExists');
+    for i=1:numel(folders)
+      if ~exist(fullfile(pth,folders{i}),'dir')
+        [stat, msg] = mkdir(fullfile(pth,folders{i}));
+        if ~stat
+          fprintf('%s: Error while creating directory %s\n\n\n',msg,fullfile(pth,folders{i}));
+          return
         end
       end
-      if ~exist(fullfile(pth,'surf'),'dir') && job.output.surface
-        mkdir(fullfile(pth,'surf'));
-      end
-      if ~exist(fullfile(pth,'label'),'dir') && job.output.ROI
-        mkdir(fullfile(pth,'label'));
-      end
-      
-      mrifolder    = 'mri';
-      reportfolder = 'report';
-    else
-      mrifolder    = '';
-      reportfolder = '';
     end
   
+    if ~exist(fullfile(pth,surffolder),'dir') && job.output.surface
+      [stat, msg] = mkdir(fullfile(pth,surffolder));
+      if ~stat
+        fprintf('%s: Error while creating directory %s\n\n\n',msg,fullfile(pth,surffolder));
+        return
+      end
+    end
+  
+    if ~exist(fullfile(pth,labelfolder),'dir') && job.output.ROI
+      [stat, msg] = mkdir(fullfile(pth,labelfolder));
+      if ~stat
+        fprintf('%s: Error while creating directory %s\n\n\n',msg,fullfile(pth,labelfolder));
+        return
+      end
+    end
     
-    %  -----------------------------------------------------------------
-    %  separation of full CAT preprocessing and SPM segmentation
-    %  preprocessing (running DARTEL and PBT with SPM segmentation)
-    %  -----------------------------------------------------------------
-    [pp,ff,ee,ex] = spm_fileparts(job.data{subj}); 
-    if exist(fullfile(pp,['c1' ff(3:end) ee]),'file') && ...
-       exist(fullfile(pp,['c2' ff(3:end) ee]),'file') && ...
-       exist(fullfile(pp,['c3' ff(3:end) ee]),'file') && ...
-       exist(fullfile(pp,[ff(3:end) '_seg8.mat']),'file');
-       
-        job.data{subj}          = fullfile(pp,[ff ee]); 
-        job.channel.vols{subj}  = fullfile(pp,[ff ee]); 
+  end
+  
+  % create subject-wise diary file with the command-line output
+  [pp,ff,ee,ex] = spm_fileparts(job.data{subj});  %#ok<ASGLU>
+  catlog = fullfile(pth,reportfolder,['catlog_' ff '.txt']);
+  if exist(catlog,'file'), delete(catlog); end % write every time a new file, turn this of to have an additional log file
+  
+  % check if not another diary is already written that is not the default- or catlog-file. 
+  if ~strcmpi(spm_check_version,'octave')
+    olddiary = spm_str_manip( get(0,'DiaryFile') , 't');
+    usediary = ~isempty(strfind( olddiary , 'diary' )) | ~isempty(strfind( olddiary , 'catlog_' )); 
+    if usediary
+      diary(catlog); 
+      diary on; 
+    else  
+      cat_io_cprintf('warn',sprintf('External diary log is writen to "%s".\n',get(0,'DiaryFile'))); 
+    end
+  end
+  
+  % print current CAT release number and subject file
+  [n,r] = cat_version;
+  str  = sprintf('%s r%s: %d/%d',n,r,subj,numel(job.channel(1).vols));
+  str2 = spm_str_manip(job.channel(1).vols{subj}(1:end-2),['a' num2str(70 - length(str))]);
+  cat_io_cprintf([0.2 0.2 0.8],'\n%s\n%s: %s%s\n%s\n',...
+        repmat('-',1,72),str,...
+        repmat(' ',1,70 - length(str) - length(str2)),str2,...
+        repmat('-',1,72));
+  clear r str str2
+  
+  if job.extopts.ignoreErrors>1
+    cat_io_addwarning([mfilename ':ignoreErrors'],'Run pipeline with backup functions (IN DEVELOPMENT).',1,[1 1]); 
+  end
 
-        % prepare SPM preprocessing structure 
-        images = job.channel(1).vols{subj};
-        for n=2:numel(job.channel)
-          images = char(images,job.channel(n).vols{subj});
-        end
+  
+  %  -----------------------------------------------------------------
+  %  separation of full CAT preprocessing and SPM segmentation
+  %  preprocessing (running DARTEL and PBT with SPM segmentation)
+  %  -----------------------------------------------------------------
+  [pp,ff,ee,ex] = spm_fileparts(job.data{subj}); 
+  if exist(fullfile(pp,['c1' ff(3:end) ee]),'file') && ...
+     exist(fullfile(pp,['c2' ff(3:end) ee]),'file') && ...
+     exist(fullfile(pp,['c3' ff(3:end) ee]),'file') && ...
+     exist(fullfile(pp,[ff(3:end) '_seg8.mat']),'file') && strcmp(ff(1:2),'c1')
+     
+      job.data{subj}          = fullfile(pp,[ff ee]); 
+      job.channel.vols{subj}  = fullfile(pp,[ff ee]); 
 
-        obj.image    = spm_vol(images);
-        spm_check_orientations(obj.image);
+      % prepare SPM preprocessing structure 
+      images = job.channel(1).vols{subj};
+      for n=2:numel(job.channel)
+        images = char(images,job.channel(n).vols{subj});
+      end
 
-        obj.fwhm     = job.opts.fwhm;
-        obj.biasreg  = cat(1,job.opts.biasreg);
-        obj.biasfwhm = cat(1,job.opts.biasfwhm);
-        obj.tpm      = tpm;
-        obj.lkp      = [];
-        if all(isfinite(cat(1,job.tissue.ngaus))),
-            for k=1:numel(job.tissue),
-                obj.lkp = [obj.lkp ones(1,job.tissue(k).ngaus)*k];
-            end;
-        end
-        obj.reg      = job.opts.warpreg;
-        obj.samp     = job.opts.samp;              
+      obj.image    = spm_vol(images);
+      obj.fwhm     = job.opts.fwhm;
+      obj.biasreg  = cat(1,job.opts.biasreg);
+      obj.biasfwhm = cat(1,job.opts.biasfwhm);
+      obj.tol      = job.opts.tol;
+      obj.newtol   = 2; % stopping criteria for outer (=tol) and inner loop:
+                        %  -1-old SPM (>9 iters, inner=tol), 
+                        %   0-old CAT more outer iterations (>19 iter, inner=tol),  
+                        %   1-new optimal/faster with additional AUC criteria to have SPM minimum iterations (>9 iters, inner=1e-2)
+                        %   2-new accurate with additioal AUC criteria but CAT minimum iterations (>19 iter, outer=tol, inner=1e-4)
+      obj.lkp      = [];
+      obj.reg      = job.opts.warpreg;
+      obj.samp     = job.opts.samp;              
+      spm_check_orientations(obj.image);
 
-        cfname  = fullfile(pp,[ff ee]);
-        ofname  = fullfile(pp,[ff(3:end) ee]); 
-        nfname  = fullfile(pp,mrifolder,['n' ff '.nii']); 
-        copyfile(ofname,nfname); 
-
-        res = load(fullfile(pp,[ff(3:end) '_seg8.mat']));
-        job.channel(1).vols{subj}  = [nfname ex];
-        job.channel(1).vols0{subj} = [ofname ex];
-        res.image  = spm_vol([nfname ex]);
-        res.image0 = spm_vol([ofname ex]);
-        res.imagec = spm_vol([cfname ex]);
-        res.spmpp  = 1; 
-    else
-
-        %  -----------------------------------------------------------------
-        %  check resolution properties
-        %  -----------------------------------------------------------------
-        %  There were some images that should not be processed. So we have  
-        %  to check for high slice thickness and low resolution.
-        %  -----------------------------------------------------------------
-        for n=1:numel(job.channel) 
-          V = spm_vol(job.channel(n).vols{subj});
-          vx_vol = sqrt(sum(V.mat(1:3,1:3).^2));
-
-          if any(vx_vol>5)  % too thin slices
-            error('CAT:cat_main:TooLowResolution', sprintf(...
-                 ['Voxel resolution has to be better than 5 mm in any dimension \n' ...
-                  'for reliable CAT preprocessing! \n' ...
-                  'This image has a resolution %0.2fx%0.2fx%0.2f mm%s. '], ... 
-                    vx_vol,char(179))); %#ok<SPERR>
+      if all(isfinite(cat(1,job.tissue.ngaus)))
+          for k=1:numel(job.tissue)
+              obj.lkp = [obj.lkp ones(1,job.tissue(k).ngaus)*k];
           end
-          if prod(vx_vol)>27  % too small voxel volume (smaller than 3x3x3 mm3)
-            error('CAT:cat_main:TooHighVoxelVolume', ...
-                 ['Voxel volume has to be smaller than 10 mm%s (around 3x3x3 mm%s) to \n' ...
-                  'allow a reliable CAT preprocessing! \n' ...
-                  'This image has a voxel volume of %0.2f mm%s. '], ...
-                  char(179),char(179),prod(vx_vol),char(179));
-          end
-          if max(vx_vol)/min(vx_vol)>8 % isotropy 
-            error('CAT:cat_main:TooStrongIsotropy', sprintf(...
-                 ['Voxel isotropy (max(vx_size)/min(vx_size)) has to be smaller than 8 to \n' ...
-                  'allow a reliable CAT preprocessing! \n' ...
-                  'This image has a resolution %0.2fx%0.2fx%0.2f mm%s and a isotropy of %0.2f. '], ...
-                  vx_vol,char(179),max(vx_vol)/min(vx_vol))); %#ok<SPERR>
-          end
-        end
+      end
 
+      Pseg8 = fullfile(pp,[ff(3:end) '_seg8.mat']); 
+      if ~exist(Pseg8,'file')
+        error('cat_run_job1639:SPMpp_MissSeg8mat','Can''t find "%s" file!',Pseg8);
+      end
+      res = load(Pseg8);
 
-        % save original file name 
-        for n=1:numel(job.channel) 
-          job.channel(n).vols0{subj} = job.channel(n).vols{subj};
-        end
-
-
-        % allways create the n*.nii image because of the real masking of the
-        % T1 data for spm_preproc8 that include rewriting the image!
-        for n=1:numel(job.channel) 
-            [pp,ff,ee] = spm_fileparts(job.channel(n).vols{subj}); 
-            ofname  = fullfile(pp,[ff ee]); 
-            nfname  = fullfile(pp,mrifolder,['n' ff '.nii']); 
-            if strcmp(ee,'.nii')
-              copyfile(ofname,nfname); 
-            elseif strcmp(ee,'.img')
-              V = spm_vol(job.channel(n).vols{subj});
-              Y = spm_read_vols(V);
-              V.fname = nfname; 
-              spm_write_vol(V,Y);
-              clear Y; 
-            end
-            job.channel(n).vols{subj} = nfname;
-
-            
-            
-            %% skull-stripping detection
-            %  ------------------------------------------------------------
-            %  Detect skull-stripping or defaceing because it strongly 
-            %  affects SPM segmenation that expect gaussian distribution! 
-            %  If a brain mask was used than we expect 
-            %   - many zeros (50% for small background - 80-90% for large backgrounds)
-            %   - a brain like volume (below 2500 cm3)
-            %   - only on object (the masked regions)
-            %   - only on background (not in very case?)
-            %   - less variance of thissue intensity (only 3 brain classes)
-            %  ------------------------------------------------------------
-            VF    = spm_vol(nfname); 
-            YF    = spm_read_vols(VF); 
-            Oth   = cat_stat_nanmean(YF(YF(:)~=0 & YF(:)>cat_stat_nanmean(YF(:)))); 
-            F0vol = cat_stat_nansum(YF(:)~=0) * prod(vx_vol) / 1000; 
-            F0std = cat_stat_nanstd(YF(YF(:)>0.5*Oth & YF(:)>0)/Oth); 
-            YFC = YF~=0; 
-            if sum(YFC(:)>0)<numel(YFC)*0.9 && sum(YFC(:)>0)>numel(YFC)*0.1  % if there is a meanful background
-              YFC = ~cat_vol_morph(YF~=0,'lc',1);                            % close noisy background
-            end
-            [YL,numo] = spm_bwlabel(double(YF~=0),26);  clear YL;            % number of objects
-            [YL,numi] = spm_bwlabel(double(YFC==0),26); clear YL;            % number of background regions 
-            ppe.affreg.skullstrippedpara = [sum(YF(:)==0)/numel(YF) numo numi F0vol F0std]; 
-            ppe.affreg.skullstripped = ...
-              ppe.affreg.skullstrippedpara(1)>0.5 && ...                     % many zeros
-              ppe.affreg.skullstrippedpara(2)<5  && ...                      % only few object
-              ppe.affreg.skullstrippedpara(3)<10 && ...                      % only few background regions 
-              F0vol<2500 && F0std<0.5;                                       % many zeros  and  not to big
-            ppe.affreg.skullstripped = ppe.affreg.skullstripped || ...
-              sum([ppe.affreg.skullstrippedpara(1)>0.8 F0vol<1500 F0std<0.4])>1; % or 2 extrem values
-            if ~debug, clear YFC F0vol F0std numo numi; end 
-    
-            
-            
-            %% APP bias correction (APP1 and APP2)
-            %  ------------------------------------------------------------
-            %  Bias correction is essential for stable affine registration. 
-            %  SPM further required Gaussian distributed data that is 
-            %  achieved by Smoothing in high resolution data and by 
-            %  additional noise in regions with many zeros typical in 
-            %  skull-stripped or defaced data. 
-            %  ------------------------------------------------------------
-            if (job.extopts.APP==1 || job.extopts.APP==2) && ~ppe.affreg.skullstripped
-              stime = cat_io_cmd('APPs bias correction');
-              if debug, copyfile(ofname,nfname); end
-
-              % SPM segmentation parameter
-              preproc.channel.vols{1,1}   = nfname; 
-              preproc.channel.biasreg     = min(0.01,max(0.0001,job.opts.biasreg));
-              preproc.channel.biasfwhm    = min(90,max(30,job.opts.biasfwhm/2));
-              preproc.channel.write       = [0 1];
-              for ti=1:6
-                preproc.tissue(ti).tpm    = {[tpm.V(ti).fname ',' num2str(ti)]};
-                preproc.tissue(ti).ngaus  = job.opts.ngaus(ti);
-                preproc.tissue(ti).native = [0 0];                           % native, dartel
-                preproc.tissue(ti).warped = [0 0];                           % unmod, mod
-              end
-              preproc.warp.mrf            = 1;                               % 
-              preproc.warp.cleanup        = 1;                               % this is faster and give better results!
-              preproc.warp.reg            = [0 0.001 0.5 0.05 0.2];
-              preproc.warp.affreg         = job.opts.affreg; 
-              preproc.warp.write          = [0 0];
-              %preproc.warp.fwhm           = 0;
-              %preproc.warp.samp           = min(9,max(2,job.opts.samp*2));
-              
-              % add noise in zerosed regions (skull-stripping / defacing)
-              VF = spm_vol(nfname);
-              YF = single(spm_read_vols(VF));
-              % some average object intensity 
-              Tthn = cat_stat_nanmean(YF(YF(:)>cat_stat_nanmean(YF(YF(:)~=0)) & YF(:)~=0));
-              % limitation is required for division data (yv98_05mm_corrected_
-              YF = min( Tthn*10, YF); 
-              % smoothing for Gaussian distribution
-              YF(isnan(YF(:)))=0;
-              YFs = YF+0; spm_smooth(YFs,YFs,0.5./vx_vol);
-              YM = abs( (YF-YFs)./max(eps,YFs));
-              YM = min(1,smooth3(YM ./ min(0.2,max(YM(:)))));
-              YF = YFs.*YM + YF.*(1-YM);
-              Y0 = YF==0; 
-              % add noise for Gaussian distribution in the background
-              if ppe.affreg.skullstripped
-                YF = YF + (Y0) .* (0.05*Tthn).*rand(size(YF));
-              else
-                YF(cat_vol_morph(Y0,'o'))=nan; 
-              end
-              % force floating point
-              VF.dt(1) = 16; 
-              spm_write_vol(VF,YF);  
-              clear VF YF Tthn; 
-
-            
-              %% try SPM preprocessing
-              %  ----------------------------------------------------------
-              %  * if SPM failed we go on without bias correction 
-              %  * further interations on different resolution are usefull
-              %    (the first run correct the worst problems and should 
-              %     a correct registration of the next runs)
-              %  * best results for strong corrections (fwhm 30 to 45 mm)
-              %  * SPM preprocessing is very fast (and gives you results in 
-              %    the template resolution?) but writing results in the 
-              %    original resolution is very slow, so using 2 interations
-              %    is maybe optimal
-              %  * much slower for biasfwhm<35 mm and samp<4.5 mm
-              %  ----------------------------------------------------------
-              if job.opts.biasfwhm<37.5                                    % heavy  (5 iterations)
-                sampx  = [2.00  1.75  1.50  1.25  1.00]; 
-                fwhmx  = [45    45    30    30    30  ]/30; 
-              elseif job.opts.biasfwhm>=37.5 && job.opts.biasfwhm<52.5     % strong (4 iterations)
-                sampx  = [2.00  1.75  1.50  1.25]; 
-                fwhmx  = [45    45    30    30  ]/45; 
-              elseif job.opts.biasfwhm>=52.5 && job.opts.biasfwhm<67.5     % medium (3 iterations)
-                sampx  = [2.00  1.75  1.50]; 
-                fwhmx  = [45    45    30  ]/60; 
-              elseif job.opts.biasfwhm>=67.5 && job.opts.biasfwhm<82.5     % light  (2 iterations)
-                sampx  = [2.00  1.75]; 
-                fwhmx  = [75    45  ]/75;
-              elseif job.opts.biasfwhm>=82.5                               % ultralight (1 iteration)
-                sampx  = 2.00; 
-                fwhmx  = 1.00;
-              end
-              
-              spmp0    = debug;  % job.extopts.verb>1; % for debugging: 0 - remove all APP data, 1 - save Ym, 2 - save Ym and Yp0
-              optimize = 0;      % use low resolution (in mm) input image to increase speed >> limited speed advante :/
-                                 % deformation requires a lot of time ... maybe its enough to use it only in case of ultra highres data
-              if mean(vx_vol)<0.8, optimize = 1.0; end            
-              
-              preproc.Yclsout = false(1,6); 
-              if debug, copyfile(ofname,nfname); end
-              if optimize>0 
-                Vi        = spm_vol(nfname); 
-                Vi        = rmfield(Vi,'private'); Vn = Vi; 
-                imat      = spm_imatrix(Vi.mat); 
-                Vi.dim    = round(Vi.dim .* vx_vol./repmat(optimize,1,3));
-                imat(7:9) = repmat(optimize,1,3) .* sign(imat(7:9));
-                Vi.mat    = spm_matrix(imat);
-
-                cat_vol_imcalc(Vn,Vi,'i1',struct('interp',6,'verb',0));
-              end
-              
-              for ix=1:numel(sampx)
-                % parameter update
-                preproc.warp.samp         = min(9 ,max(2 ,job.opts.samp     * sampx(ix))); 
-                preproc.channel.biasfwhm  = min(90,max(30,job.opts.biasfwhm * fwhmx(ix)));
+      % load tpm priors 
+      tpm = spm_load_priors8(res.tpm);
+      obj.lkp = res.lkp; 
+      obj.tpm = tpm; 
       
-                if ix==1
-                  fprintf('\n');
-                  stime2 = cat_io_cmd(sprintf('  SPM bias correction (%0.2f mm)',preproc.warp.samp),'g5','',job.extopts.verb-1);
-                else
-                  stime2 = cat_io_cmd(sprintf('  SPM bias correction (%0.2f mm)',preproc.warp.samp),'g5','',job.extopts.verb-1,stime2);
-                end
+      % Special cases with different class numbers in case of SPM input
+      if max(obj.lkp)==6
+      % default cases
+      elseif max(obj.lkp)==3
+        cat_io_addwarning('SPMpp_PostMortem','Detected only 3 classes that are interpretated as GM, WM, and CSF/background.',0,[0 1])
+      elseif max(obj.lkp)==4 
+        cat_io_addwarning('SPMpp_SkullStripped','Detected only 4 classes that are interpretated as GM, WM, CSF, and background',0,[0 1])
+      else
+        cat_io_addwarning('SPMpp_AtypicalClsNumber',sprintf('Atypical number of input classes (max(lkp)=%d).',max(obj.lkp)),2,[0 1])
+      end
+      
+      
+      cfname  = fullfile(pp,[ff ee]);
+      ofname  = fullfile(pp,[ff(3:end) ee]); 
+      nfname  = fullfile(pp,mrifolder,['n' ff '.nii']); 
+      copyfile(ofname,nfname,'f'); 
 
-                try
-                  % SPM bias correction
-                  warning off; 
-                  if ix==numel(sampx) 
-                    if job.extopts.APP==2 || spmp0>1, preproc.Yclsout = true(1,6); end % 
-                    vout   = cat_spm_preproc_run(preproc,'run');
-                    spmmat = open(fullfile(pp,mrifolder,['n' ff '_seg8.mat'])); 
-                    AffineSPM = spmmat.Affine; 
-                  else
-                    cat_spm_preproc_run(preproc,'run');
-                  end
-                  warning on; 
+      Ysrc0    = single(spm_read_vols(obj.image)); 
+      Ylesion  = single(isnan(Ysrc0) | isinf(Ysrc0) | Ysrc0==0); clear Ysrc0;
+      
+     
+      job.channel(1).vols{subj}  = [nfname ex];
+      job.channel(1).vols0{subj} = [ofname ex];
+      res.image  = spm_vol([nfname ex]);
+      res.image0 = spm_vol([ofname ex]);
+      res.imagec = spm_vol([cfname ex]);
+      res.spmpp  = 1; 
+      job.spmpp  = 1; 
+      
+      cat_err_res.obj = obj; 
+  else
 
-                  Pmn    = fullfile(pp,mrifolder,['mn' ff ee]); 
-                  Pmn_ri = fullfile(pp,mrifolder,['mn' ff '_r' num2str(ix) ee]);
-                  Pmn_r0 = fullfile(pp,mrifolder,['mn' ff '_r0' ee]);
-                  
-                  % backup the bias corrected image
-                  if spmp0>0, copyfile(Pmn,Pmn_ri); end
-                  
-                  % backup for mixing
-                  if (ix==2 && numel(sampx)>2) || (ix==1 && numel(sampx)==2)
-                    copyfile(fullfile(pp,mrifolder,['mn' ff ee]),Pmn_r0); 
-                  end
-                  % write segmentation 
-                  if spmp0>1 && exist('vout','var') && isfield(vout,'Ycls') 
-                    VF  = spm_vol(nfname); VF.fname = fullfile(pp,mrifolder,['p0n' ff '.nii']); VF.dt(1) = 2; 
-                    Yp0 = single(vout.Ycls{1})/255*2 + single(vout.Ycls{2})/255*3 + single(vout.Ycls{3})/255;
-                    spm_write_vol(VF,Yp0);  
-                  elseif spmp0==0 && ix==numel(sampx) % remove spm mat file
-                    delete(fullfile(pp,mrifolder,['n' ff '_seg8.mat']));
-                  end
-                  
-                  % combine low and high frequency filted images 
-                  if numel(sampx)>1 && ix==numel(sampx)
-                    %%
-                    stime2 = cat_io_cmd('  Postprocessing','g5','',job.extopts.verb-1,stime2);
-                    if optimize
-                      % update Ym
-                      Vn  = spm_vol(nfname); Vn = rmfield(Vn,'private');
-                      Vo  = spm_vol(ofname); Vo = rmfield(Vo,'private'); 
-                      [Vmx,vout.Ym] = cat_vol_imcalc([Vo,Vn],Vo,'i2',struct('interp',1,'verb',0));
-                      vout.Ym = single(vout.Ym); 
+      %  -----------------------------------------------------------------
+      %  check resolution properties
+      %  -----------------------------------------------------------------
+      %  There were some images that should not be processed. So we have  
+      %  to check for large slice thickness and low spatial resolution.
+      %  RD201909: I tried 4x4x4 and 1x1x8 mm data with default and NLM 
+      %            interpolation. Also NLM shows less edges and more 
+      %            correct surfaces, the thickness results are worse and 
+      %            the limits are ok.
+      %  RD202007: Low resolution data is now allowed if ignoreErrer > 1.
+      %            Tested again NLM and Boeseflug interpolation and there
+      %            are many artefacts and simple spline interpolation is 
+      %            more save. 
+      %  RD202107: Print warning for reslimit/2 and alert for reslimit.  
+      %  -----------------------------------------------------------------
+      for n=1:numel(job.channel) 
+        V = spm_vol(job.channel(n).vols{subj});
+        vx_vol = sqrt(sum(V.mat(1:3,1:3).^2));
 
-                      %% remap Ym0
-                      Vn = spm_vol(Pmn_r0); Vn = rmfield(Vn,'private');
-                      Vo = spm_vol(ofname); Vo = rmfield(Vo,'private'); 
-                      [Vmx,Ym0] = cat_vol_imcalc([Vo,Vn],Vo,'i2',struct('interp',1,'verb',0));
-                      Ym0 = single(Ym0); 
+        % maximum [ slice-thickness , volume^3 , anisotropy ]
+        reslimits    = [5 4 8]; 
+        
+        % too thin slices
+        if any( vx_vol > reslimits(1) ) || job.test_warnings
+          mid = [mfilename 'cat_run_job:TooLowResolution']; 
+          msg = sprintf(['Voxel resolution should be better than %d mm in any dimension for \\\\n' ...
+            'reliable preprocessing! This image has a resolution of %0.2fx%0.2fx%0.2f mm%s. '], ... 
+            reslimits(1),vx_vol,native2unicode(179, 'latin1'));
+          cat_io_addwarning(mid,msg,1 + any( vx_vol > reslimits(1) ) ,[0 1],vx_vol);
+        end
+        
+        % too small voxel volume (smaller than 3x3x3 mm3)
+        if prod(vx_vol) > (reslimits(2))^3 || job.test_warnings
+          mid = [mfilename 'cat_run_job:TooLargeVoxelVolume']; 
+          msg = sprintf(['Voxel volume should be smaller than %d mm%s (around %dx%dx%d mm%s) for \\\\n' ...
+                  'reliable preprocessing! This image has a voxel volume of %0.2f mm%s. '], ...
+                  reslimits(2)^3,native2unicode(179, 'latin1'),reslimits(2),reslimits(2),reslimits(2),...
+                  native2unicode(179, 'latin1'),prod(vx_vol),native2unicode(179, 'latin1'));
+          cat_io_addwarning(mid,msg,1 + (prod(vx_vol) > reslimits(2)^3),[0 1],vx_vol);
+        end
+        
+        % anisotropy
+        if max(vx_vol) / min(vx_vol) > reslimits(3) || job.test_warnings
+          mid = [mfilename 'cat_run_job:TooStrongAnisotropy'];
+          msg = sprintf(['Voxel anisotropy (max(vx_size)/min(vx_size)) should be smaller than %d for \\\\n' ...
+                  'reliable preprocessing! This image has a resolution %0.2fx%0.2fx%0.2f mm%s \\\\nand a anisotropy of %0.2f. '], ...
+                  reslimits(3),vx_vol,native2unicode(179, 'latin1'),max(vx_vol)/min(vx_vol));
+          cat_io_addwarning(mid,msg,1 + (max(vx_vol) / min(vx_vol) > reslimits(3)/3),[0 1],vx_vol);
+        end
+      end
 
-                      %% update Ycls
-                      if isfield(vout,'Ycls')
-                        for i=1:6
-                          Vn  = spm_vol(nfname); Vn = rmfield(Vn,'private');
-                          Vo  = spm_vol(ofname); Vo = rmfield(Vo,'private'); 
-                          Vn.pinfo = repmat([1;0],1,size(vout.Ycls{i},3));
-                          Vo.pinfo = repmat([1;0],1,Vo.dim(3));
-                          Vn.dt    = [2 0];
-                          Vo.dt    = [2 0]; 
-                          Vo.dat   = zeros(Vo.dim(1:3),'uint8');
-                          if ~isempty(vout.Ycls{i})
-                            Vn.dat   = vout.Ycls{i}; 
-                            [Vmx,vout.Ycls{i}]  = cat_vol_imcalc([Vo,Vn],Vo,'i2',struct('interp',1,'verb',0));
-                            vout.Ycls{i} = cat_vol_ctype(vout.Ycls{i}); 
-                          end
-                        end
-                      end
-                    else
-                      Ym0 = spm_read_vols(spm_vol(Pmn_r0)); 
-                    end
-                    stime2 = cat_io_cmd(' ','g5','',job.extopts.verb-1,stime2); 
-                    
-                    if ~debug && exist(Pmn_r0,'file'), delete(Pmn_r0); end
-                    if ~debug && exist(Pmn_r0,'file'), delete(Pmn_r0); end
-                    
-                    %% mixing
-                    %  creation of segmenation takes a lot of time because
-                    %  of the deformations. So it is much faster to load a
-                    %  rought brain mask. 
-                    if isfield(vout,'Ycls')
-                      Yp0 = single(vout.Ycls{1})/255*2 + single(vout.Ycls{2})/255*3 + single(vout.Ycls{3})/255;
-                      YM2 = cat_vol_smooth3X(cat_vol_smooth3X(Yp0>0,16/mean(vx_vol))>0.95,10/mean(vx_vol)); 
-                      if ~debug, clear Yp0; end
-                    else
-                      Pb  = char(job.extopts.brainmask);
-                      Pbt = fullfile(pp,mrifolder,['brainmask_' ff '.nii']);
-                      VF  = spm_vol(ofname); 
-                      VFa = VF; if job.extopts.APP~=5, VFa.mat = Affine * VF.mat; end
-                      [Vmsk,Yb] = cat_vol_imcalc([VFa,spm_vol(Pb)],Pbt,'i2',struct('interp',3,'verb',0)); 
-                      Ybb = cat_vol_smooth3X(Yb>0.5,8/mean(vx_vol)); Ybb = Ybb./max(Ybb(:)); 
-                      YM2 = cat_vol_smooth3X(Ybb>0.95,8/mean(vx_vol)); YM2 = YM2./max(Ybb(:)); 
-                      if ~debug, clear Pb Pbt VFa Vmsk Yb Ybb; end
-                    end
-                    % combine the low (~60 mm, Ym0) and high frequency correction (~30 mm, vout.Ym) 
-                    Yo  = spm_read_vols(spm_vol(ofname)); 
-                    Yw  = vout.Ym.*(1-YM2) + (YM2).*Ym0;
-                    Yw  = Yo./Yw .* (Yo~=0 & Yw~=0); 
-                    % correct undefined voxel and assure smoothness of the bias field 
-                    Yw  = cat_vol_approx(max(0.05,min(10,Yw)),'',vx_vol,2,struct('lfO',2));
-                    vout.Ym = Yo ./ Yw; 
-                    if ~debug, clear Yw Yo; end
-                    Vm = spm_vol(ofname); Vm.fname = nfname; Vm.dt(1) = 16;  
-                    spm_write_vol(Vm,vout.Ym); 
-                    
-                    % backup the bias corrected image
-                    if spmp0>0 
-                      copyfile(nfname,fullfile(pp,mrifolder,['mn' ff '_r' num2str(ix)+1 ee])); 
-                    end
-                    if exist(Pmn_r0,'file'), delete(Pmn_r0); end
-                  else
-                    movefile(fullfile(pp,mrifolder,['mn' ff ee]),nfname); 
-                  end
-                catch
-                  fprintf('\b\b\b\b\b\b\b\b\b(failed) ');   
-                  if exist(fullfile(pp,mrifolder,['mn' ff ee]),'file')
-                    delete(fullfile(pp,mrifolder,['mn' ff ee]));
-                  end
-                end
-                if 0
-                  %% just debugging
-                  Yp0  = single(vout.Ycls{1})/255*2 + single(vout.Ycls{2})/255*3 + single(vout.Ycls{3})/255;
-                  Tthx = max( [ median( vout.Ym(vout.Ycls{1}(:)>128)) , median( vout.Ym(vout.Ycls{2}(:)>128)) ]);
-                  ds('d2','a',vx_vol,Ym0/Tthx,Yp0/3,vout.Ym/Tthx,vout.Ym/Tthx,120)
-                  %%
-                  Tthx = mean( vout.Ym( YM2(:)>0.2 & vout.Ym(:)>mean(vout.Ym(YM2(:)>0.2))) );
-                  ds('d2','',vx_vol,Ym0/Tthx,YM2,vout.Ym/Tthx,Ym/Tthx,80)
-                end
-              end
-              if debug, cat_io_cmd('','g5','',job.extopts.verb-1,stime); end
-              Pmn = fullfile(pp,mrifolder,['mn' ff ee]); 
-              if exist(Pmn,'file'), delete(Pmn); end
-              
-              %% try APPs preprocessing
-              %  ----------------------------------------------------------
-              %  SPM may failed in correction of high intensive gyri that 
-              %  should be fixed by the APPs correction that is similar to
-              %  the APPinit and APPfinal routines but used SPM as input 
-              %  segmentation.
-              %  However this can work very well in general, problems can 
-              %  occure in subcortical structures and the cerebellum, 
-              %  especially in special protocols. 
-              %  ----------------------------------------------------------
-              if exist('vout','var') && job.extopts.APP==2
-                stime2 = cat_io_cmd('  APP bias correction','g5','',job.extopts.verb-1,stime2); 
-                
-                try
-                  Ym = cat_run_job_APP_SPM(ofname,vout,vx_vol,job.extopts.verb-1,job.opts.biasstr); 
-                  spm_write_vol(spm_vol(nfname),Ym);  
-                  if ~debug, clear vout Ym0 YM2 Ym; end  
-                  if spmp0
-                    copyfile(nfname,fullfile(pp,mrifolder,['mn' ff '_r' num2str(ix)+2 ee])); 
-                  end
-                catch
-                  fprintf('failed\n');
-                end
-              end
-              fprintf('%4.0fs\n',etime(clock,stime));  
-              
-              %if spmp0, return; else if ~debug, clear spmp0; end; end
-            end
-            
-            
-            
-            %% noise correction
-            %  ------------------------------------------------------------
-            if job.extopts.NCstr~=0
-              if job.extopts.NCstr==2 || job.extopts.NCstr==3
-                if job.extopts.NCstr==2, NCstr=-inf; else NCstr=1; end 
-                stime = cat_io_cmd(sprintf('ISARNLM denoising (NCstr=%0.2f)',NCstr));
-                if job.extopts.verb>1, fprintf('\n'); end
-                cat_vol_isarnlm(struct('data',nfname,'verb',(job.extopts.verb>1)*2,'prefix','','NCstr',NCstr)); 
-                if job.extopts.verb>1, cat_io_cmd(' ','',''); end
-              else
-                stime = cat_io_cmd(sprintf('SANLM denoising (NCstr=%0.2f)',job.extopts.NCstr));
-                cat_vol_sanlm(struct('data',nfname,'verb',0,'prefix','','NCstr',job.extopts.NCstr)); 
-              end
-              fprintf('%4.0fs\n',etime(clock,stime));   
-            end
+      % save original file name 
+      for n=1:numel(job.channel) 
+        job.channel(n).vols0{subj} = job.channel(n).vols{subj};
+      end
+      
+     
+      % always create the n*.nii image because of the real masking of the
+      % T1 data for spm_preproc8 that includes rewriting the image!
+      for n=1:numel(job.channel) 
+        [pp,ff,ee] = spm_fileparts(job.channel(n).vols{subj}); 
+        ofname  = fullfile(pp,[ff ee]); 
+        nfname  = fullfile(pp,mrifolder,['n' ff '.nii']); 
+        if strcmp(ee,'.nii')
+          copyfile(ofname,nfname,'f'); 
+        elseif strcmp(ee,'.img')
+          V = spm_vol(job.channel(n).vols{subj});
+          Y = spm_read_vols(V);
+          V.fname = nfname; 
+          spm_write_vol(V,Y);
+          clear Y; 
+        end
+        job.channel(n).vols{subj} = nfname;
+
+        %% denoising
+        if job.extopts.NCstr~=0
+          NCstr.labels = {'none','full','light','medium','strong','heavy'};
+          NCstr.values = {0 1 2 -inf 4 5}; 
+          stime = cat_io_cmd(sprintf('SANLM denoising (%s)',...
+            NCstr.labels{find(cell2mat(NCstr.values)==job.extopts.NCstr,1,'first')}));
+          cat_vol_sanlm(struct('data',nfname,'verb',0,'prefix','','NCstr',job.extopts.NCstr)); 
+          fprintf('%5.0fs\n',etime(clock,stime));   
         end
 
-
-
-
+        %% skull-stripping detection
+        %  ------------------------------------------------------------
+        %  Detect skull-stripping or defaceing because it strongly 
+        %  affects SPM segmentation that expects gaussian distribution! 
+        %  If a brain mask was used than we expect 
+        %   - many zeros (50% for small background - 80-90% for large backgrounds)
+        %   - a smaller volume because of missing skull (below 2500 cm3)
+        %   - only one object (the masked regions)
+        %   - only one background (not in every case?)
+        %   - less variance of tissue intensity (only 3 brain classes)
+        %   - no object close to the boudary
+        %  RD202008: Added detection of high intensity background because
+        %            they require a very low histogram threshold to avoid
+        %            masking of CSF intensities that are then the lowest
+        %            values. 
+        %  RD202008: Added variable for manual overwrite that maybe allow
+        %            to skip the processing (but the number are maybe
+        %            intersting in the XML report.
+        %  ------------------------------------------------------------
+        VFn   = spm_vol(nfname); 
+        YF    = spm_read_vols(VFn);
+        [YF,R]= cat_vol_resize(YF,'reduceV',vx_vol,2,32,'meanm');
+        YF    = cat_stat_histth(YF,job.extopts.histth); 
+        YFm   = cat_stat_histth(YF,[0.95 0.95],struct('scale',[0 1])); 
+        Oth   = cat_stat_nanmean(YF(abs(YF(:))~=0 & YF(:)>cat_stat_nanmean(YF(:)))); 
+        F0vol = cat_stat_nansum(YFm(:)>0.02) * prod(R.vx_volr) / 1000; 
+        F0std = cat_stat_nanstd(YF(YFm(:)>0.2)/Oth); 
+        % RD202008: improved object detection with gradient
+        Yg    = cat_vol_grad(YFm,R.vx_volr); 
+        gth   = max(0.05,min(0.2,median(Yg(Yg(:)>median(Yg(Yg(:)>0.1)))))); % object edge threshold
+        YOB   = abs(YFm)>0.1 & Yg>gth;                                   % high intensity object edges 
+        YOB   = cat_vol_morph(YOB,'ldc',8/mean(R.vx_volr));                 % full object
+        % background  
+        if sum(YOB(:)>0)<numel(YOB)*0.9 && sum(YOB(:)>0)>numel(YOB)*0.1  % if there is a meanful background
+          YBG = ~cat_vol_morph(YOB,'lc',2/mean(R.vx_volr));                 % close noisy background
+        elseif ppe.affreg.skullstripped % RD20220316: added skull-stripping case to avoid warning
+          YBG = YF==0;
+        else
+          YBG = ~cat_vol_morph(YOB,'lc',2/mean(R.vx_volr));  
+          msg = [mfilename 'Detection of background failed.']; 
+          cat_io_addwarning('cat_run_job:failedBGD',msg,1,[0 1]);
+        end
+        % image pricture frame to test for high intensity background in case of defaced data
+        hd    = max(3,round(0.03 * size(YF))); 
+        YCO   = true(size(YF)); YCO(hd(1):end-hd(1)+1,hd(2):end-hd(2)+1,hd(3):end-hd(3)+1) = false; 
+        hd    = max(6,round(0.06 * size(YF))); 
+        YCO2  = true(size(YF)); YCO2(hd(1):end-hd(1)+1,hd(2):end-hd(2)+1,hd(3):end-hd(3)+1) = false; 
+        %% skull-stripping 
+        [YL,numo] = spm_bwlabel(double(YF~=0),26);  clear YL;            %#ok<ASGLU> % number of objects
+        [YL,numi] = spm_bwlabel(double(YBG==0),26); clear YL;            %#ok<ASGLU> % number of background regions 
+        ppe.affreg.skullstrippedpara = [sum(YBG(:))/numel(YF) numo numi F0vol F0std sum(YCO2(:) .* YOB(:))/sum(YOB(:))]; 
+        ppe.affreg.skullstripped = ...
+          ppe.affreg.skullstrippedpara(1)>0.5 && ...                     % many zeros
+          ppe.affreg.skullstrippedpara(2)<15  && ...                     % only a few objects
+          ppe.affreg.skullstrippedpara(3)<10  && ...                     % only a few background regions 
+          F0vol<2500 && F0std<0.5 && ...                                 % many zeros and not too big
+          ppe.affreg.skullstrippedpara(3)<0.02;                          % there should be no object (neck) very close to the boundary
+        ppe.affreg.skullstripped = ppe.affreg.skullstripped || ...
+          sum([ppe.affreg.skullstrippedpara(1)>0.8 F0vol<1500 F0std<0.4])>1; % or 2 extreme values
+        % not automatic detection in animals
+        ppe.affreg.skullstripped = ppe.affreg.skullstripped && strcmp(job.extopts.species,'human');
+        %% high intensity background (MP2Rage)
+        ppe.affreg.highBGpara = [ ...
+          cat_stat_nanmedian( YFm( YBG(:) > 1/3 )) ... normal background
+          cat_stat_nanmedian( YFm( YCO(:) > 1/3 )) ... pricture frame background 
+          cat_stat_nanstd( YFm(YBG(:)) > 1/3)]; % I am not sure if we should use the std, because inverted images are maybe quite similar
+        ppe.affreg.highBG     = ...
+          ppe.affreg.highBGpara(1) > 1/5 || ...
+          ppe.affreg.highBGpara(2) > 1/5; 
+        
+        if ~debug, clear YFC YBG YOB YCO YCO2 F0vol F0std numo numi hd; end 
+        
+        % manual overwrite 
+        switch job.extopts.input
+          case 1, ppe.affreg.skullstripped = 0; ppe.affreg.highBGpara = 0;
+          case 2, ppe.affreg.skullstripped = 1; ppe.affreg.highBGpara = 0;
+          case 3, ppe.affreg.skullstripped = 0; ppe.affreg.highBGpara = 1; 
+        end
+        
+        if ppe.affreg.highBG
+          msg = 'Detected high intensity background use lower histrogram thresholds.'; 
+          cat_io_addwarning([mfilename ':highBG'],msg,1,[0 1],ppe.affreg.highBGpara);
+          job.extopts.histth(1) = 0.999999;
+        end
+        
+        
+        
+        
         %% Interpolation
         %  -----------------------------------------------------------------
-        %  The interpolation can help to reduce problems for morphological
+        %  The interpolation can help reducing problems for morphological
         %  operations for low resolutions and strong isotropic images. 
-        %  For interpolation from 2 to 1 mm the segmentation shows more 
-        %  anatomical details.
-        for n=1:numel(job.channel) 
+        %  Especially for Dartel registration a native resolution larger than the Dartel 
+        %  resolution helps to reduce normalization artifacts of the
+        %  deformations. Furthermore, even if artifacts can be reduced by the final smoothing
+        %  it is much better to avoid them.  
 
-          % prepare header of resampled volume
-          Vi        = spm_vol(job.channel(n).vols{subj}); 
-          vx_vol    = sqrt(sum(Vi.mat(1:3,1:3).^2));
-          vx_vol    = round(vx_vol*10^2)/10^2; % avoid small differences 
+        % prepare header of resampled volume
+        Vi        = spm_vol(job.channel(n).vols{subj}); 
+        vx_vol    = sqrt(sum(Vi.mat(1:3,1:3).^2));
+        %vx_vol    = round(vx_vol*10^2)/10^2; % avoid small differences 
 
-          % we have to look for the name of the field due to the GUI job struct generation! 
-          restype   = char(fieldnames(job.extopts.restypes));
-          switch restype
-            case 'native'
-              vx_voli  = vx_vol;
-            case 'fixed', 
-              vx_voli  = min(vx_vol ,job.extopts.restypes.(restype)(1) ./ ...
-                         ((vx_vol > (job.extopts.restypes.(restype)(1)+job.extopts.restypes.(restype)(2)))+eps));
-              vx_voli  = max(vx_voli,job.extopts.restypes.(restype)(1) .* ...
-                         ( vx_vol < (job.extopts.restypes.(restype)(1)-job.extopts.restypes.(restype)(2))));
-            case 'best'
-              best_vx  = max( min( 1.0 , vx_vol) ,job.extopts.restypes.(restype)(1)); 
-              vx_voli  = min(vx_vol ,best_vx ./ ((vx_vol > (best_vx + job.extopts.restypes.(restype)(2)))+eps));
-              %vx_voli  = min(vx_vold,vx_voli); % guarantee Dartel resolution
-            otherwise 
-              error('cat_run_job:restype','Unknown resolution type ''%s''. Choose between ''fixed'',''native'', and ''best''.',restype)
-          end
+        % we have to look for the name of the field due to the GUI job struct generation! 
+        restype   = char(fieldnames(job.extopts.restypes));
+        switch restype
+          case 'native'
+            vx_voli  = vx_vol;
+          case 'fixed' 
+            vx_voli  = min(vx_vol ,job.extopts.restypes.(restype)(1) ./ ...
+                       ((vx_vol > (job.extopts.restypes.(restype)(1)+job.extopts.restypes.(restype)(2)))+eps));
+            vx_voli  = max(vx_voli,job.extopts.restypes.(restype)(1) .* ...
+                       ( vx_vol < (job.extopts.restypes.(restype)(1)-job.extopts.restypes.(restype)(2))));
+          case 'best'
+            best_vx  = max( min(vx_vol) ,job.extopts.restypes.(restype)(1)); 
+            vx_voli  = min(vx_vol ,best_vx ./ ((vx_vol > (best_vx + job.extopts.restypes.(restype)(2)))+eps));
+          case 'optimal'
+            aniso   = @(vx_vol) (max(vx_vol) / min(vx_vol)^(1/3))^(1/3);                                              % penetration factor
+            volres  = @(vx_vol) repmat( round( aniso(vx_vol) * prod(vx_vol)^(1/3) * 10)/10 , 1 , 3);                  % volume resolution
+            optresi = @(vx_vol) min( job.extopts.restypes.(restype)(1) , max( median(vx_vol) , volres(vx_vol) ) );    % optimal resolution 
+            optdiff = @(vx_vol) abs( vx_vol - optresi(vx_vol) ) < job.extopts.restypes.(restype)(2);                  % tolerance limites
+            optimal = @(vx_vol) vx_vol .* optdiff(vx_vol) + optresi(vx_vol) .* (1 - optdiff(vx_vol) );                % final optimal resolution 
+            vx_voli = optimal(vx_vol); 
+          otherwise 
+            error('cat_run_job:restype','Unknown resolution type ''%s''. Choose between ''fixed'',''native'',''optimal'', and ''best''.',restype)
+        end
 
-
-          % interpolation 
-          if any( (vx_vol ~= vx_voli) )  
-
-            stime = cat_io_cmd(sprintf('Internal resampling (%4.2fx%4.2fx%4.2fmm > %4.2fx%4.2fx%4.2fmm)',vx_vol,vx_voli));
-
-            Vi        = rmfield(Vi,'private'); 
+        % interpolation 
+        if any( (vx_vol ~= vx_voli) )  
+          stime = cat_io_cmd(sprintf('Internal resampling (%4.2fx%4.2fx%4.2fmm > %4.2fx%4.2fx%4.2fmm)',vx_vol,vx_voli));
+         
+          if 0
             imat      = spm_imatrix(Vi.mat); 
             Vi.dim    = round(Vi.dim .* vx_vol./vx_voli);
             imat(7:9) = vx_voli .* sign(imat(7:9));
-            Vi.mat    = spm_matrix(imat);
-
-            Vn = spm_vol(job.channel(n).vols{subj}); 
-            Vn = rmfield(Vn,'private'); 
-            cat_vol_imcalc(Vn,Vi,'i1',struct('interp',6,'verb',0));
-            vx_vol = vx_voli;
-
-            fprintf('%4.0fs\n',etime(clock,stime));    
+            Vi.mat    = spm_matrix(imat); clear imat; 
+            Vn        = spm_vol(job.channel(n).vols{subj}); 
+            cat_vol_imcalc(Vn,Vi,'i1',struct('interp',2,'verb',0,'mask',-1));
           else
-            vx_vol = sqrt(sum(Vi.mat(1:3,1:3).^2));
+            jobr.data   = {Vi.fname}; 
+            jobr.interp = -2005; % spline with smoothing in case of downsampling
+            jobr.verb   = 0; 
+            jobr.prefix = ''; 
+            jobr.restype.res  = vx_voli; % use other resolution for test  
+            cat_vol_resize(jobr); 
           end
-          clear Vi Vn;
+          vx_vol = vx_voli;
+          
+          fprintf('%5.0fs\n',etime(clock,stime));     
+        else
+          vx_vol = sqrt(sum(Vi.mat(1:3,1:3).^2));
         end
 
-
-        %  prepare SPM preprocessing structure 
-        images = job.channel(1).vols{subj};
-        for n=2:numel(job.channel)
-            images = char(images,job.channel(n).vols{subj});
+        clear Vi Vn;
+        
+        
+        %% APP bias correction (APPs1 and APPs2)
+        %  ------------------------------------------------------------
+        %  Bias correction is essential for stable affine registration 
+        %  but also the following preprocessing. This approach uses the
+        %  SPM Unified segmentation for intial bias correction of the 
+        %  input data with different FWHMs (low to high frequency) and 
+        %  resolutions (low to high).
+        %  As far as SPM finally also gives us a nice initial segmentation 
+        %  why not use it for a improved maximum based correction?!
+        %  ------------------------------------------------------------
+ % 20181222       if ~strcmp(job.extopts.species,'human'), job.extopts.APP = 5; end
+        if (job.extopts.APP==1 || job.extopts.APP==2) 
+           job.subj = subj;
+           [Ym,Ybg,WMth] = cat_run_job_APP_SPMinit(job,tpm,ppe,n,...
+             ofname,nfname,mrifolder,ppe.affreg.skullstripped);
         end
-        obj.image    = spm_vol(images);
-        obj.fwhm     = job.opts.fwhm;
-        obj.biasreg  = job.opts.biasreg;
-        obj.biasfwhm = job.opts.biasfwhm; 
-        obj.tpm      = tpm;
-        obj.lkp      = [];
-        if all(isfinite(cat(1,job.tissue.ngaus))),
-            for k=1:numel(job.tissue),
-                obj.lkp = [obj.lkp ones(1,job.tissue(k).ngaus)*k];
-            end;
-        end
-        obj.reg      = job.opts.warpreg;
-        obj.samp     = job.opts.samp;              
-        spm_check_orientations(obj.image);
-
-
+        
+        
+      end
 
       
-        if 1 || ~exist('Affine','var')
-          %% Initial affine registration.
-          %  -----------------------------------------------------------------
-          %  APP option with subparameter
-          %  Skull-stripping is helpful for correcting affine registration of neonates and other species. 
-          %  Bias correction is important for the affine registration.
-          %  However, the first registation can fail and further control is required   
-          if exist('AffineSPM','var'), Affine = AffineSPM; else Affine  = eye(4); end
-          [pp,ff] = spm_fileparts(job.channel(1).vols{subj});
-          Pbt     = fullfile(pp,mrifolder,['brainmask_' ff '.nii']);
-          Pb      = char(job.extopts.brainmask);
-          Pt1     = char(job.extopts.T1);
+      % prepare SPM preprocessing structure 
+      images = job.channel(1).vols{subj};
+      for n=2:numel(job.channel)
+        images = char(images,job.channel(n).vols{subj});
+      end
+      obj.image    = spm_vol(images);
+      obj.fwhm     = job.opts.fwhm;
+      obj.biasreg  = job.opts.biasreg;
+      obj.biasfwhm = job.opts.biasfwhm;
+      obj.tpm      = tpm;   
+      obj.reg      = job.opts.warpreg;
+      obj.samp     = job.opts.samp;              
+      obj.tol      = job.opts.tol;
+      obj.lkp      = [];
+      if all(isfinite(cat(1,job.tissue.ngaus)))
+        for k=1:numel(job.tissue)
+          obj.lkp = [obj.lkp ones(1,job.tissue(k).ngaus)*k];
+        end
+      end
+      spm_check_orientations(obj.image);
+      cat_err_res.obj = obj; 
+      
+      %% Initial affine registration.
+      %  -----------------------------------------------------------------
+      Affine  = eye(4); 
+      [pp,ff] = spm_fileparts(job.channel(1).vols{subj});
+      Pbt     = fullfile(pp,mrifolder,['brainmask_' ff '.nii']);
+      Pb      = char(job.extopts.brainmask);
+      Pt1     = char(job.extopts.T1);
+      
+      if ~isempty(job.opts.affreg)  
+        % first affine registration (with APP)
+        
+        % load template and remove the skull if the image is skull-stripped
+        try 
+          VG = spm_vol(Pt1);
+        catch
+          pause(rand(1))
+          VG = spm_vol(Pt1);
+        end
+        VF = spm_vol(obj.image(1));
 
-
-          % Estimate the COM and initial affine matrix that is used in case 
-          % of failed initial affine registration.
-          VF    = spm_vol(nfname); 
-          YF    = spm_read_vols(VF); 
-          xsum  = shiftdim(sum(sum(YF/Oth>0.5,2),3),1); 
-          ysum  = sum(sum(YF/Oth>0.5,1),3);             
-          zsum  = shiftdim(sum(sum(YF/Oth>0.5,1),2),1); 
-          COM   = [find(cumsum(xsum)/sum(xsum)>0.5,1,'first') ...
-                   find(cumsum(ysum)/sum(ysum)>0.5,1,'first') ...
-                   find(cumsum(zsum)/sum(zsum)>0.5,1,'first')];
-          COMmm = (eye(4) * VF.mat) * [COM';1];
-          AffineCOM = eye(4); AffineCOM(13:15) = -COMmm(1:3); 
-          %ACvox  = round(inv(Affine * VF.mat) * [ 0; 0; 0; 1]); ACvox = ACvox(1:3)';
-          COMvox = round(inv(AffineCOM * VF.mat) * [0;0;0;1]);  COMvox = COMvox(1:3)'; %#ok<MINV,NASGU>
-          if ~debug, clear YF xsum ysum zsum Oth; end 
-
-
-
-          % load template and remove the sull if the image is skull-stripped
-          try 
-            VG = spm_vol(Pt1);
-          catch
-            pause(rand(1))
-            VG = spm_vol(Pt1);
+        % skull-stripping of the template
+        if ppe.affreg.skullstripped || job.extopts.gcutstr<0
+          % print a warning for all users that did not turn off skull-stripping 
+          % because processing of skull-stripped data is not standard!
+          if job.extopts.gcutstr>=0 || job.test_warnings
+            msg = [...
+              'Detected skull-stripped or strongly masked image. Skip APP. \\n' ...
+              'Use skull-stripped initial affine registration template and \\n' ...
+              'TPM without head tissues (class 4 and 5)!']; 
+            if job.extopts.verb>1 && job.extopts.expertgui
+               msg = [msg sprintf(['\\\\n  BG: %0.2f%%%%%%%% zeros; %d object(s); %d background region(s) \\\\n' ...
+                '  %4.0f cm%s; normalized SD of all tissues %0.2f'],...
+                ppe.affreg.skullstrippedpara(1:4),native2unicode(179, 'latin1'),ppe.affreg.skullstrippedpara(5))]; 
+            end  
+            cat_io_addwarning([mfilename ':skullStrippedInputWithSkullStripping'],msg,1,[0 1],ppe.affreg.skullstrippedpara);
+            
+          elseif job.extopts.gcutstr<0 && ~ppe.affreg.skullstripped || job.test_warnings
+            cat_io_addwarning([mfilename ':noSkullStrippingButSkull'],[...
+                'Skull-Stripping is deactivated but skull was detected. \\n' ...
+                'Go on without skull-stripping what possibly will fail.'],0,[0 1],ppe.affreg.skullstrippedpara);
           end
-
 
           % skull-stripping of the template
-          if ppe.affreg.skullstripped
-            % print a warning for all users because processing of
-            % skull-stripped data is not standard!
-            if job.extopts.APP==1 || job.extopts.APP==2
-              cat_io_cprintf('warn',[...
-                'WARNING: Detected skull-stripping or strongly masked image. Skip APP. \n' ...
-                '         Use skull-stripped initial affine registration template and  \n' ...
-                '         TPM without head tissue (class 4 and 5)! \n']);
+          VB = spm_vol(Pb);
+          [VB2,YB] = cat_vol_imcalc([VG,VB],Pbt,'i1 .* i2',struct('interp',3,'verb',0,'mask',-1)); 
+          VB2.dat(:,:,:) = eval(sprintf('%s(YB/max(YB(:))*255);',spm_type(VB2.dt))); 
+          VB2.pinfo      = repmat([1;0],1,size(YB,3));
+          VG             = cat_spm_smoothto8bit(VB2,0.5);
+          clear VB2 YB; 
+        end
+
+        % Rescale images so that globals are better conditioned
+        VF.pinfo(1:2,:) = VF.pinfo(1:2,:)/spm_global(VF);
+        VG.pinfo(1:2,:) = VG.pinfo(1:2,:)/spm_global(VG);
+
+        % APP step 1 rough bias correction 
+        % --------------------------------------------------------------
+        % Already for the rough initial affine registration a simple  
+        % bias corrected and intensity scaled image is required, because
+        % large head intensities can disturb the whole process.
+        % --------------------------------------------------------------
+        % ds('l2','',vx_vol,Ym, Yt + 2*Ybg,obj.image.private.dat(:,:,:)/WMth,Ym,60)
+        if (job.extopts.APP == 1070 || job.extopts.APP == 1144) && ~ppe.affreg.highBG
+          stime = cat_io_cmd('APP: Rough bias correction'); 
+          try
+            Ysrc  = single(obj.image.private.dat(:,:,:)); 
+            if job.extopts.APP == 1070 
+              [Ym,Yt,Ybg,WMth] = cat_run_job_APP_init1070(Ysrc,vx_vol,job.extopts.verb); %#ok<ASGLU>
+            else % new version R1144
+              [Ym,Yt,Ybg,WMth,bias,Tth,ppe.APPi] = cat_run_job_APP_init(...
+                Ysrc,vx_vol,struct('verb',job.extopts.verb,'APPstr',job.opts.biasstr));  %#ok<ASGLU>
+            end
+          catch apperr
+            %% very simple affine preprocessing ... only simple warning
+            cat_io_addwarning([mfilename ':APPerror'],'APP failed. Use simple scaling.',1,[0 0],apperr);
+            [Ym,Yt,Ybg,WMth] = APPmini(obj,VF,job.extopts.histth); %#ok<ASGLU>
+            if cat_get_defaults('extopts.send_info')
+              urlinfo = sprintf('%s%s%s%s%s%s%s%s%s%s',cat_version,'%2F',computer,'%2F','errors',...
+                 '%2F','cat_run_job:failedAPP','%2F','WARNING: APP failed. Use simple scaling.','cat_run_job');
+              cat_io_send_to_server(urlinfo);
+            end
+          end
+          APPRMS = checkAPP(Ym,Ysrc,job.extopts.histth); 
+          if APPRMS>1 || job.test_warnings
+            if job.extopts.ignoreErrors < 1 
+              fprintf('\n'); 
+              error([mfilename ':APPerror'],'Detect problems in APP preprocessing (APPRMS: %0.4f). Do not use APP results. ',APPRMS);
             else
-              cat_io_cprintf('warn',[...
-                'WARNING: Detected skull-stripping or strongly masked image. \n' ...
-                '         Use skull-stripped initial affine registration template and \n' ...
-                '         TPM without head tissue (class 4 and 5)! \n']);
-            end
-            if job.extopts.verb>1
-              cat_io_cprintf('warn',sprintf(...
-               ['           %0.2f%%%% zeros, %d object(s), %d background region(s) \n' ...
-                '           %4.0f cm%s, normalized SD of all tissues %0.2f \n'],...
-                ppe.affreg.skullstrippedpara(1:4),char(179),ppe.affreg.skullstrippedpara(5))); 
-            end
-
-            % skull-stripping of the template
-            VB = spm_vol(Pb);
-            [VB2,YB] = cat_vol_imcalc([VG,VB],Pbt,'i1 .* i2',struct('interp',3,'verb',0)); 
-            VB2.dat(:,:,:) = eval(sprintf('%s(YB/max(YB(:))*255);',spm_type(VB2.dt))); 
-            VB2.pinfo      = repmat([1;0],1,size(YB,3));
-            VG             = cat_spm_smoothto8bit(VB2,0.5);
-            %VG.dat         = cat_vol_ctype(VG.dat);
-            %VG.dt          = [spm_type('UINT8') spm_platform('bigend')];
-            clear VB2 YB; 
+              cat_io_addwarning([mfilename ':APPerror'],...
+                sprintf('Detect problems in APP preprocessing (APPRMS: %0.4f). \\\\nDo not use APP results. ',APPRMS),1,[0 1],APPRMS);
+            end 
+          end
+      
+          if ~( job.extopts.setCOM && ~( isfield(job,'useprior') && ~isempty(job.useprior) ) && ...
+              ~ppe.affreg.highBG && strcmp(job.opts.affreg,'prior') )
+            stime = cat_io_cmd('Affine registration','','',1,stime); 
           end
 
-
-          % Rescale images so that globals are better conditioned
-          VF.pinfo(1:2,:) = VF.pinfo(1:2,:)/spm_global(VF);
-          VG.pinfo(1:2,:) = VG.pinfo(1:2,:)/spm_global(VG);
-
-
-          % APP step 1 rough bias correction 
-          % --------------------------------------------------------------
-          % Already for the rought initial affine registration a simple  
-          % bias corrected and intensity scaled image is required, because
-          % high head intensities can disturb the whole process.
-          % --------------------------------------------------------------
-          %   ds('l2','',vx_vol,Ym, Yt + 2*Ybg,Ysrc/WMth,Ym,60)
-          if  job.extopts.APP>2 %app.bias ||  app.msk 
-            stime = cat_io_cmd('APP: Rough bias correction'); 
-            Ysrc = single(spm_read_vols(spm_vol(obj.image(1).fname)));
-            Ysrc(isnan(Ysrc) | isinf(Ysrc)) = min(Ysrc(:));
-
-            [Ym,Yt,Ybg,WMth,bias,Tth,ppe.APPi] = cat_run_job_APP_init(...
-              Ysrc,vx_vol,struct('verb',job.extopts.verb,'APPstr',job.opts.biasstr)); 
-            bth = min( [ mean(single(Ysrc( Ybg(:)))) - 2*std(single(Ysrc( Ybg(:)))) , ...
-                         mean(single(Ysrc(~Ybg(:)))) - 4*std(single(Ysrc(~Ybg(:)))) , ...
-                         min(single(Ysrc(~Ybg(:)))) ] );
-            if ~debug, clear Ysrc; end 
-
-            % zero background is required for images with high intensity background
-            zeroBG = cat_stat_nanmean(Ym(Ybg))<1/3;
-            Ymc = Ym; if ~zeroBG, Ymc(Ybg) = 0; bth = 0; end; 
-            if ~debug, clear Ym; end 
-
-            % write data to VF
-            VF.dt    = [spm_type('UINT8') spm_platform('bigend')];
-            VF.pinfo = repmat([1;0],1,size(Ymc,3));
-            VF.dat   = cat_vol_ctype(Ymc * max(1/2,Tth.Tmax) * 255); 
-
-            stime = cat_io_cmd('Coarse affine registration:','','',1,stime); 
-          else
-            stime = cat_io_cmd('Coarse affine registration'); 
-          end
+          % write data to VF
+          VF.dt         = [spm_type('UINT8') spm_platform('bigend')];
+          VF.dat(:,:,:) = cat_vol_ctype(Ym * 200,'uint8'); 
+          VF.pinfo      = repmat([1;0],1,size(Ym,3));
+if 0 % new           
+          % use further data limitation and remove background for affreg 
+          [Ym2,ths]     = cat_stat_histth(Ym,job.extopts.histth);
+          Ym2           = (Ym2 - ths(1)) ./ diff(ths) .* (1 - Ybg); 
+          VF.dat(:,:,:) = cat_vol_ctype(Ym2 * 200,'uint8'); 
+end
+          clear WI ths; 
 
           % smoothing
-          VF1   = cat_spm_smoothto8bit(VF,8.0);
-          VG1   = cat_spm_smoothto8bit(VG,0.5); 
+          resa  = obj.samp*2; % definine smoothing by sample size
+          VF1   = spm_smoothto8bit(VF,resa); 
+          VG1   = spm_smoothto8bit(VG,resa); %#ok<NASGU>
 
-          % prepare affine parameter 
-          aflags     = struct('sep',obj.samp,'regtype','subj','WG',[],'WF',[],'globnorm',1); 
-          aflags.sep = max(aflags.sep,max(sqrt(sum(VG(1).mat(1:3,1:3).^2))));
-          aflags.sep = max(aflags.sep,max(sqrt(sum(VF(1).mat(1:3,1:3).^2))));
+        elseif job.extopts.setCOM && ~( isfield(job,'useprior') && ~isempty(job.useprior) ) && ...
+            ~ppe.affreg.highBG && strcmp(job.opts.affreg,'prior')
+          % standard approach (no APP) with static resa value and no VG smoothing
+          stime = cat_io_cmd('Coarse affine registration');
+          resa  = 8;
+          VF1   = spm_smoothto8bit(VF,resa);
+          VG1   = VG; %#ok<NASGU>
+          [Ym,Yt,Ybg,WMth] = APPmini(obj,VF,job.extopts.histth);
+        else
+          stime = cat_io_cmd('Skip initial affine registration due to high-intensity background','','',1);  
+          VF = spm_vol(obj.image(1));
+          [Ym,Yt,Ybg,WMth] = APPmini(obj,VF,job.extopts.histth);
+        end
 
+        %% prepare affine parameter 
+        aflags     = struct('sep',obj.samp,'regtype','subj','WG',[],'WF',[],'globnorm',1); % job.opts.affreg
+        aflags.sep = max(aflags.sep,max(sqrt(sum(VG(1).mat(1:3,1:3).^2))));
+        aflags.sep = max(aflags.sep,max(sqrt(sum(VF(1).mat(1:3,1:3).^2))));
 
+        % use affine transformation of given (average) data for longitudinal mode
+        if isfield(job,'useprior') && ~isempty(job.useprior) && strcmp(job.opts.affreg,'prior')  
+          priorname = job.useprior{1};
+          [pp,ff,ee,ex] = spm_fileparts(priorname);  %#ok<ASGLU>
+          catxml = fullfile(pp,reportfolder,['cat_' ff '.xml']);
 
-          %% affine registration
-          spm_plot_convergence('Init','Coarse affine registration','Mean squared difference','Iteration');
-          if strcmp('human',job.extopts.species) 
-            warning off 
-            try 
-              [Affine0, affscale] = cat_spm_affreg(VG1, VF1, aflags,Affine, 1); Affine = Affine0; 
-            catch
-              Affine0 = eye(4); affscale = 1; cat_io_cmd(' ','','',1);
+          % check that file exists and get affine transformation
+          if exist(catxml,'file') 
+            cat_io_cmd(sprintf('  Use affine transformation from:\n"%s"',ff),'','',1,stime); 
+            stime           = cat_io_cmd(' ',' ','',job.extopts.verb); 
+            xml             = cat_io_xml(catxml);
+            % sometimes xml file does not contain affine transformation
+            if ~isfield(xml,'SPMpreprocessing')
+              cat_io_cprintf('warn',sprintf('WARNING: File "%s" does not contain successful affine transformation. Use individual affine transformation\n',catxml));
+              Affine   = eye(4); 
+              useprior = 0;
+            else
+              Affine   = xml.SPMpreprocessing.Affine;
+              affscale = 1;
+              useprior = 1;
             end
-            warning on
-
-
-            %  If this registration failed and the AC is somewhere outside 
-            %  than use an initial affine registion that use the COM as AC. 
-            %  Use the more successfull mapping
-            mat0 = spm_imatrix(Affine0);
-            ACvox  = round(inv(Affine * VF.mat) * [ 0; 0; 0; 1]); ACvox = ACvox(1:3)'; %#ok<MINV>
-            if any(any(isnan(Affine0(1:3,:)))) || affscale<0.5 || affscale>3 || (all(all(roundx(Affine0,6) == eye(4))) &&  affscale == 1) || ...
-              (max(mat0(7:9))/min(mat0(7:9)))>1.2 || any(ACvox<VF.dim/6) || any(ACvox>VF.dim - VF.dim/6)
-
-              % do affreg
-              warning off 
-              try 
-                [AffineCOM2, affscaleCOM]  = cat_spm_affreg(VG1, VF1, aflags, AffineCOM, 1);
-              catch
-                AffineCOM2 = eye(4); affscaleCOM = 1; 
-              end
-              warning on
-
-              matCOM  = spm_imatrix(AffineCOM2);
-              COMvox2 = round(inv(AffineCOM2 * VF.mat) * [0;0;0;1]);  COMvox2 = COMvox2(1:3)'; %#ok<MINV>
-
-              % check affreg and use the affine registration with less different scaling factors 
-              if (( (max(matCOM(7:9))/min(matCOM(7:9))) < (max(mat0(7:9))/min(mat0(7:9)))*1.05 ) && ...
-                 (  abs(affscaleCOM-1) < abs(affscale-1)*1.05 )) || ...
-                 (any(COMvox2>VF.dim/6) && any(COMvox2<VF.dim - VF.dim/6))
-                Affine = AffineCOM2; affscale = affscaleCOM; 
-
-                % give another (silent) warning
-                if job.extopts.verb>1
-                  cat_io_cprintf('warn','\nInitial registration failed use center of mass as AC! \n');
-                  cat_io_cmd(' ','','',1);  
-                end
-              end
-            end
-
-            % final check of the new affine matrix 
-            if any(any(isnan(Affine(1:3,:)))) || affscale<0.5 || affscale>3 || (all(all(roundx(Affine,6) == eye(4))) &&  affscale == 1)
-              stime  = cat_io_cmd('Coarse affine registration failed. Try fine affine registration.','','',1,stime);
-              cat_io_cmd(' ','','',1);  Affine = eye(4); affscale = 1; cat_io_cmd(' ','','',1);
-            end
-
           else
-            % no affine registration 
-            Affine = eye(4); affscale = 1; Affine0 = eye(4); %#ok<NASGU> % Affine 0 for debuging
+            cat_io_addwarning([mfilename ':UseAffRegPrior'],...
+              sprintf('Affine prior file "%s" not found. \\\\nEstimate individual affine transformation. ',catxml),2,[1 2],catxml);
+            useprior        = 0;
+          end
+          clear catxml; 
+                      
+          % RD202010: The AVG contains much more background that can
+          %           cause a lot of trouble if not modelled !
+          obj.lkp(obj.lkp == 6) = []; 
+          obj.lkp = [ obj.lkp 6*ones(1,8) ]; 
+        else
+          useprior          = 0;
+        end
+        
+        % correct origin using COM and invert translation and use it as starting value
+        if job.extopts.setCOM && ~useprior && ~ppe.affreg.highBG
+          fprintf('\n'); stime = clock;  
+          Affine_com        = cat_vol_set_com(VF1);
+          Affine_com(1:3,4) = -Affine_com(1:3,4);
+        else
+          Affine_com = eye(4);
+        end
+
+        if strcmp('human',job.extopts.species) && ~useprior && ~ppe.affreg.highBG 
+          % affine registration
+          try
+            spm_plot_convergence('Init','Coarse affine registration','Mean squared difference','Iteration');
+          catch
+            spm_chi2_plot('Init','Coarse affine registration','Mean squared difference','Iteration');
           end
 
+          try 
+            evalc('[Affine0, affscale]  = spm_affreg(VG1, VF1, aflags, Affine_com); Affine = Affine0;');  
+          catch
+            affscale = 0; 
+          end
+          % RD202007: Unimportant information if maff8 works 
+          if job.extopts.expertgui 
+            if affscale>3 || affscale<0.5
+              stime  = cat_io_cmd('  Coarse affine registration failed. Try fine affine registration.','','',1,stime);
+              Affine = Affine_com; 
+            end
+          end
+        elseif strcmp('human',job.extopts.species) && ~useprior && ppe.affreg.highBG 
+          Affine  = Affine_com; 
+          Affine1 = Affine; 
+        end
 
-
-
-          %% APP step 2 - brainmasking and second tissue separated bias correction  
-          %  ---------------------------------------------------------
-          %  The second part of APP maps a brainmask to native space and 
-          %  refines it by morphologic operations and region-growing to
-          %  adapt for worse initial affine alignments. It is important
-          %  that the mask covers the whole brain, whereas additional
-          %  masked head is here less problematic.
-          %  ---------------------------------------------------------
-          %    ds('l2','',vx_vol,Ym,Yb,Ym,Yp0,90)
+        
+        %% APP step 2 - brainmasking and second tissue separated bias correction  
+        %  ---------------------------------------------------------
+        %  The second part of APP maps a brainmask to native space and 
+        %  refines it by morphologic operations and region-growing to
+        %  adapt for worse initial affine alignments. It is important
+        %  that the mask covers the whole brain, whereas additional
+        %  masked head is here less problematic.
+        %  ---------------------------------------------------------
+        %    ds('l2','',vx_vol,Ym,Yb,Ym,Yp0,90)
+        
+        % fine affine registration 
+        if strcmp('human',job.extopts.species) && ~useprior && ~ppe.affreg.highBG
           aflags.sep = obj.samp/2; 
           aflags.sep = max(aflags.sep,max(sqrt(sum(VG(1).mat(1:3,1:3).^2))));
           aflags.sep = max(aflags.sep,max(sqrt(sum(VF(1).mat(1:3,1:3).^2))));
-
-          %% apply (first affine) registration on the default brain mask
-          VFa = VF; if strcmp(job.extopts.species,'human'), VFa.mat = Affine * VF.mat; else Affine = eye(4); affscale = 1; end
-          if isfield(VFa,'dat'), VFa = rmfield(VFa,'dat'); end
-          [Vmsk,Yb] = cat_vol_imcalc([VFa,spm_vol(Pb)],Pbt,'i2',struct('interp',3,'verb',0)); 
-          if exist('Ybg','var'), Yb = Yb>0.5 & ~Ybg; end
-
-          if exist('Ymc','var') && (sum(Yb(:))==0 || mean(Ymc(Yb(:)>0))<0.5 || mean(Ymc(Yb(:)>1.05))<0.5) 
-            %%
-            [Ymr,Ytr,resT3] = cat_vol_resize({Ymc,single(Yt)},'reduceV',vx_vol,min(1.2,cat_stat_nanmean(vx_vol)*2),64,'meanm'); 
-            Ybr  = cat_vol_morph(Ytr>0.5 & Ymr>0.7 & Ymr<1.2,'o',1); 
-            Ybsr = cat_vol_smooth3X(Ybr,8);  
-            Ybsr = Ybsr./max(Ybsr(:)); 
-            Ybr  = cat_vol_morph(Ytr>0.3 & Ymr>0.7 & Ymr<1.2 & Ybsr>0.1,'o',1); 
-            Ybr  = cat_vol_morph(Ybr,'lc',6); 
-            Yb   = cat_vol_resize(Ybr,'dereduceV',resT3); 
-            Affine = eye(4); affscale = 1;
+          
+          stime = cat_io_cmd('Affine registration','','',1,stime); 
+          if job.extopts.APP>0
+            VF.dt         = [spm_type('UINT8') spm_platform('bigend')];
+            VF.pinfo(1:2,:) = VF.pinfo(1:2,:)/spm_global(VF);
+            VF.pinfo      = repmat([1;0],1,size(Ym,3));
+            VF.dat(:,:,:) = cat_vol_ctype(Ym*200); 
           end
+          VF1 = spm_smoothto8bit(VF,aflags.sep); %#ok<NASGU>
+          VG1 = spm_smoothto8bit(VG,aflags.sep); %#ok<NASGU>
 
-          if job.extopts.APP>3
-            stime = cat_io_cmd('APP: Fine bias correction and skull-stripping:','','',1,stime); 
-
-            % fine APP
-            [Ym,Yp0,Yb] = cat_run_job_APP_final(single(obj.image.private.dat(:,:,:)+0),...
-                Ymc,Yb,Ybg,vx_vol,job.extopts.gcutstr,job.extopts.verb);
-            stime = cat_io_cmd('Affine registration:','','',1,stime); 
-
-            % zero background is required for images with high intensity background
-            Ymc = Ym; if ~zeroBG, Ymc(Ybg) = 0; end
-            if ~debug, clear Ym; end
-
-            VF.dat(:,:,:) = cat_vol_ctype(Ymc * max(1/2,Tth.Tmax) * 255); 
-
-          end
-          if strcmp('human',job.extopts.species) 
-            stime = cat_io_cmd('Affine registration','','',1,stime); 
+          try
             spm_plot_convergence('Init','Affine registration','Mean squared difference','Iteration');
-
-            % smooth data
-            VF1 = cat_spm_smoothto8bit(VF,aflags.sep);
-            VG1 = cat_spm_smoothto8bit(VG,0.5); 
-
-            % fine affine registration 
-            warning off
-            try
-              [Affine1,affscale1] = spm_affreg(VG1, VF1, aflags, Affine, affscale); 
-            catch
-              Affine1 = eye(4,4); affscale1 = 1;
-            end
-            warning on
-
-            % check results and reset affine matrix 
-            if any(any(isnan(Affine1(1:3,:)))) || affscale1<0.5 || affscale1>3,
-              Affine1 = eye(4,4); affscale1 = 1;
-            end
-            Affine = Affine1; 
-
-            if ~debug, clear VG VG1 VF1; end
-
-            ppe.affreg.Affine1 = Affine; ppe.affreg.mat1 = spm_imatrix(Affine); ppe.affreg.affscale1 = affscale1;
+          catch
+            spm_chi2_plot('Init','Affine registration','Mean squared difference','Iteration');
           end
-
-
-          %% APP for spm_maff8
-          %  optimize intensity range
-          %  we have to rewrite the image, because SPM reads it again 
-          if job.extopts.APP>3 %&& (app.aff>0 || app.bias>0 || app.msk>0)
-              % add and write bias corrected (, skull-stripped) image
-              Ymc2 = single(max(bth,min( max( WMth + max(3*diff([bth,WMth])) , ...
-                WMth / max(1/2 - 3/8*Tth.inverse,Tth.Tmax) ) ,Ymc * WMth))); % use the bias corrected image
-              if ~debug, clear Ymc; end
-
-              % hard masking
-              if ~zeroBG, Ymc2 = Ymc2 .* (~Ybg); end % 20161229 - simple to do this than to change all things in cat_main
-              if job.extopts.APP==5, Ymc2 = Ymc2 .* cat_vol_morph(cat_vol_morph(Yb,'d',1),'lc',1); end
-
-              % set variable and write image
-              %obj.image.dat   = Ymc2;  
-              %obj.image.dt    = [spm_type('FLOAT32') spm_platform('bigend')];
-              %obj.image.pinfo = repmat([1;0],1,size(Ymc2,3));
-              spm_write_vol(obj.image,Ymc2); 
-          end
-        
-
-        
+          evalc('[Affine1,affscale1] = spm_affreg(VG1, VF1, aflags, Affine, affscale);'); 
+          if ~any(any(isnan(Affine1(1:3,:)))) && affscale1>0.5 && affscale1<3, Affine = Affine1; end 
+        end
+        clear VG1 VF1
        
+      else
+        Affine = eye(4);
+        VF = spm_vol(obj.image(1));
+        [Ym,Yt,Ybg,WMth] = APPmini(obj,VF,job.extopts.histth); %#ok<ASGLU>
+        %[Ym,Yt,Ybg,WMth] = cat_run_job_APP_init1070(single(obj.image.private.dat(:,:,:)),vx_vol,job.extopts.verb); %#ok<ASGLU>
+        if ~debug, clear Yt; end
+      end
+          
+      
+      
+      %% Lesion masking as zero values of the orignal image (2018-06):
+      %  We do not use NaN and -INF because (i) most images are only (u)int16
+      %  and do not allow such values, (ii) NaN can be part of the background
+      %  of resliced images, and (iii) multiple options are not required here. 
+      %  Zero values can also occure by poor data scaling or processing in the 
+      %  background but also by other (large) CSF regions and we have to remove  
+      %  these regions later. 
+      %  We further discussed to use a separate mask images but finally decided
+      %  to keep this as simple as possible using no additional options!
+      obj.image0 = spm_vol(job.channel(1).vols0{subj});
+      Ysrc0      = spm_read_vols(obj.image0); 
+      Ylesion    = single(Ysrc0==0 | isnan(Ysrc0) | isinf(Ysrc0)); clear Ysrc0; 
+      Ylesion(smooth3(Ylesion)<0.5)=0; % general denoising 
+      if any( obj.image0.dim ~= obj.image.dim )
+        mat      = obj.image0.mat \ obj.image.mat;
+        Ylesion  = smooth3(Ylesion); 
+        Ylesionr = zeros(obj.image.dim,'single'); 
+        for i=1:obj.image.dim(3)
+          Ylesionr(:,:,i) = single(spm_slice_vol(Ylesion,mat*spm_matrix([0 0 i]),obj.image.dim(1:2),[1,NaN]));
+        end
+        Ylesion = Ylesionr>0.5; clear Ylesionr;
+      end
+      if exist('Ybg','var'), Ylesion(Ybg)=0; end % denoising in background
+      if sum(Ylesion(:))/1000 > 1
+        fprintf('%5.0fs\n',etime(clock,stime)); stime = []; 
+        if ~job.extopts.SLC
+          % this could be critical and we use a warning for >1 cm3 and an alert in case of >10 cm3
+          cat_io_addwarning([mfilename ':StrokeLesionButNoCorrection'],sprintf( ...
+           ['There are %0.2f cm%s of zeros within the brain but Stroke Lesion \\\\n', ...
+            'Correction (SLC) inactive (available in the expert mode). '], ...
+            sum(Ylesion(:))/1000,native2unicode(179, 'latin1')),1 + (sum(Ylesion(:))/1000 > 10),[0 1]);  
+          clear Ylesion; 
+        else
+          cat_io_cprintf('note',sprintf('SLC: Found masked region of %0.2f cm%s. \n', sum(Ylesion(:))/1000,native2unicode(179, 'latin1'))); 
+        end
+      end
+      
+      
+      %% APP for spm_maff8
+      %  optimize intensity range
+      %  we have to rewrite the image, because SPM reads it again 
+      if job.extopts.APP>0
+          % WM threshold
+          Ysrc = single(obj.image.private.dat(:,:,:)); 
+          Ysrc(isnan(Ysrc) | isinf(Ysrc)) = min(Ysrc(:));
 
-        
-          %%  Fine Affine Registration with 3 mm sampling distance
-          %  This does not work for non human (or very small brains)
-          stime = cat_io_cmd('SPM preprocessing 1 (estimate):','','',1,stime); 
-          if strcmp('human',job.extopts.species) 
-            % sampling >6 mm seams to fail in some cases, but higher sampling (<3 mm) did not improve the result 
-            % also the variation of smoothing did not work well in all cases and lower smoothing (<=4 mm) lead to problems in some cases 
-            fwhm = [0 24 12 8]; samp = [0 6 6 6]; % entry 1 is the initial affine registration 
-            ppe.affreg.Affine2   = cell(size(fwhm));  ppe.affreg.Affine2{1}   = Affine1; 
-            ppe.affreg.affscale2 = cell(size(fwhm));  ppe.affreg.affscale2{1} = ppe.affreg.affscale1; 
-            ppe.affreg.mat2      = cell(size(fwhm));  ppe.affreg.mat2{1}      = ppe.affreg.mat1; 
-            ppe.affreg.useaff2   = zeros(size(fwhm)); ppe.affreg.useaff2(1)   = 1; 
-            ppe.affreg.stopiter  = zeros(size(fwhm));
-            ppe.affreg.affll     = inf(size(fwhm));
-            ppe.affreg.sc1{1}    = (max(ppe.affreg.mat2{1}(7:9)) / min(ppe.affreg.mat2{1}(7:9)));
-            ppe.affreg.sc2{1}    = abs(ppe.affreg.affscale2{1} - 1);
-            %
-            for fwhmi=2:numel(fwhm)
-              %%
-              spm_plot_convergence('Init','Fine affine registration','Mean squared difference','Iteration');
-              regtime = clock;
+          if job.extopts.APP==1070 || job.extopts.APP==1144 
+            % APPinit is just a simple bias correction for affreg and should
+            % not be used further although it maybe helps in some cases!
+            Ymc = Ysrc; 
+          else
+            bth = min( [ mean(single(Ysrc( Ybg(:)))) - 2*std(single(Ysrc( Ybg(:)))) , ...
+                         mean(single(Ysrc(~Ybg(:)))) - 4*std(single(Ysrc(~Ybg(:)))) , ...
+                         min(single(Ysrc(~Ybg(:)))) ]); 
+            % use bias corrected image with original intensities 
+            Ymc = Ym * abs(diff([bth,WMth])) + bth; 
+            clear bth
+          end
+          
+          % set variable and write image
+          obj.image.dat(:,:,:)         = Ymc;  
+          obj.image.pinfo              = repmat([255;0],1,size(Ymc,3));
+          obj.image.private.dat(:,:,:) = Ymc; % = WRITE FILE
 
-              % spm_maff8 registration
-              warning off
-              [ppe.affreg.Affine2{fwhmi}, ppe.affreg.affll(fwhmi), ppe.affreg.affh{fwhmi}] = ...
-                spm_maff8( obj.image(1) , samp(fwhmi) , fwhm(fwhmi) , obj.tpm , ppe.affreg.Affine2{fwhmi} , job.opts.affreg );
-              warning on  
+          obj.image.dt    = [spm_type('FLOAT32') spm_platform('bigend')];
+          obj.image.pinfo = repmat([1;0],1,size(Ymc,3));
 
-              ppe.affreg.mat2{fwhmi}       = spm_imatrix(ppe.affreg.Affine2{fwhmi}); 
-              ppe.affreg.affscale2{fwhmi}  = mean(ppe.affreg.mat2{fwhmi}(7:9)); 
+          % mask the eroded background
+          % RD202006: masking of distant background
+          % This has strong effects for some images but I found no good 
+          % explanation how to use the mask. However, it seems that it is
+          % useful to mask unclear and/or bad background voxels but not 
+          % all of them. So we use the eroded background segment mask and 
+          % remove also regions with 0 and no gradient that are often the
+          % result of defacing, skull-stripping and reslicing.
+          % RD202006: SVE 32 dataset 
+          % We use a noisy corona here to avoid that SPM try to fit a
+          % head class into it.
+          % RD202006: thickness phantom problems
+          % Masking causes general problems in SPM US with Christian's 
+          % thickness phantom (brain PVE voxels were aligned to class 5) 
+          % that required further correction in cat_main_updateSPM. 
+          isSPMtpm = strcmp(job.extopts.species,'human') && ...
+            ( strcmp(job.opts.tpm , fullfile(spm('dir'),'tpm','TPM.nii') ) || ...
+              strcmp(job.opts.tpm , fullfile(spm('dir'),'tpm','TPM.nii,1') ) );
+          [ppt,fft] = spm_fileparts(job.opts.tpm{1});
+          isLONGtpm = strcmp(fft(1:min(numel(fft),7)),'longTPM');
+          if exist('Ybg','var') && job.extopts.setCOM ~= 120 % case 120 no msk at all
+            if ~isempty(job.useprior) || job.extopts.new_release 
+              if job.extopts.setCOM == 122
+                % RD202006 background corona to have save background values
+                Ymsk      = cat_vol_morph(Ybg,'de',10,vx_vol) | ...           % define background for cat_main_updateSPM
+                            ( cat_vol_grad( Ysrc , vx_vol)==0  &  Ysrc==0 );  % RD202006: set value arbitrary to 10 mm 
+              else
+                % RD202006 background random msk to have save background values
+                Ymsk      = cat_vol_morph( ~Ybg ,'dd',15,vx_vol) & ...        % remove voxels far from head
+                            ~( Ybg & rand(size(Ybg))>0.5) & ...               % have a noisy corona
+                            ~( cat_vol_grad( Ysrc , vx_vol)==0  &  Ysrc==0 ); % remove voxel that are 0 and have no gradient
+              end
+            else
+              % RD20220103: old cross-sectional setting with small correction for own TPMs
+              if isSPMtpm || isLONGtpm
+                Ymsk      = ~Ybg; % old default - mask background
+              else
+                cat_io_addwarning([mfilename ':noSPMTPM-noBGmasking'],...
+                  'Different TPM detected - deactivated background masking!',1,[1 2]);  
+                Ymsk      = []; % new special case for other TPMs
+              end
+            end
+            if ~isempty( Ymsk )
+              obj.msk       = VF; 
+              obj.msk.pinfo = repmat([255;0],1,size(Ybg,3));
+              obj.msk.dt    = [spm_type('uint8') spm_platform('bigend')];
+              obj.msk.dat   = uint8( Ymsk ); 
+              obj.msk       = spm_smoothto8bit(obj.msk,0.1); 
+            end
+            clear Ymsk;
+          end            
+          clear Ysrc; 
+      else
+        % defintion of basic variables in case of no APP 
+          obj.image.dat(:,:,:)  = single(obj.image.private.dat(:,:,:));
+          obj.image.dt          = [spm_type('FLOAT32') spm_platform('bigend')];
+          obj.image.pinfo       = repmat([255;0],1,size(obj.image.dat,3));
+          
+        % no masking !
+      end
 
-              % check registration and reset values to previous results
-              ppe.affreg.sc1{fwhmi} = (max(ppe.affreg.mat2{fwhmi}(7:9)) / min(ppe.affreg.mat2{fwhmi}(7:9)));
-              ppe.affreg.sc2{fwhmi} = abs(ppe.affreg.affscale2{fwhmi} - 1);
-              ppe.affreg.useaff2(fwhmi) = fwhmi<4 || ...
-                (ppe.affreg.sc1{fwhmi} < ppe.affreg.sc1{fwhmi-1}*1.05 || ...            % check scaling properties
-                 ppe.affreg.sc2{fwhmi} < ppe.affreg.sc2{fwhmi-1}*1.05) && ...            % ckeck total scaling
-                ppe.affreg.affll(fwhmi) < ppe.affreg.affll(fwhmi-1)*1.05 && ...
-                ppe.affreg.affll(fwhmi) > 0.5 && ppe.affreg.affll(fwhmi) < 1.5 && ...  % check SPM convergence criteria
-                ppe.affreg.affscale2{fwhmi}>0.5 && ppe.affreg.affscale2{fwhmi}<3;      % check principle scaling range
-              ppe.affreg.stopiter(fwhmi) = fwhmi>3 && (...
-                ppe.affreg.useaff2(fwhmi)==0 || ... 
-                ppe.affreg.sc1{fwhmi}/ppe.affreg.sc1{fwhmi-1}>1.05 || ... % stop if values get worse
-                ppe.affreg.sc1{fwhmi}/ppe.affreg.sc1{fwhmi-1}>1.05 || ...
-                ppe.affreg.affll(fwhmi)/ppe.affreg.affll(fwhmi-1)>1.05 || ... % stop for low changes
-                abs(ppe.affreg.sc1{fwhmi} - ppe.affreg.sc1{fwhmi-1})<0.01 || ...
-                abs(ppe.affreg.sc1{fwhmi} - ppe.affreg.sc1{fwhmi-1})<0.01 || ...
-                ((ppe.affreg.affll(fwhmi) - ppe.affreg.affll(fwhmi-1))<0.01 && fwhmi>2));
+      
 
-              %% some information in case of debugging
-              if 0 || debug || job.extopts.verb > 2
-                if fwhmi==2, fprintf('\n'); end; 
-                fprintf('  sc: %5.3f >> %5.3f; sc2: %5.3f >> %5.3f; conv: %5.3f > %5.3f, time: %3.0fs - use: %d, stop: %d\n',...
-                  (max(ppe.affreg.mat2{fwhmi-1}(7:9)) / min(ppe.affreg.mat2{fwhmi-1}(7:9))), ...
-                  (max(ppe.affreg.mat2{fwhmi}(7:9))   / min(ppe.affreg.mat2{fwhmi}(7:9))), ...
-                  abs(ppe.affreg.affscale2{fwhmi-1} - 1), abs(ppe.affreg.affscale2{fwhmi} - 1), ...
-                  ppe.affreg.affll(fwhmi-1), ppe.affreg.affll(fwhmi) , etime(clock,regtime) , ...
-                  ppe.affreg.useaff2(fwhmi) ,ppe.affreg.stopiter(fwhmi) ); 
-                if ppe.affreg.stopiter(fwhmi)
-                  cat_io_cmd(' ','','',1); 
+      
+      %% Fine affine Registration with automatic selection in case of multiple TPMs. 
+      %  This may not work for non human data (or very small brains).
+      %  This part should be an external (coop?) function?
+      if useprior
+        stime = cat_io_cmd('SPM preprocessing 1 (estimate 1 - use prior):','','',1,stime); 
+      elseif job.extopts.setCOM == 10 % no maffreg
+        stime = cat_io_cmd('SPM preprocessing 1 (estimate 1 - skip TPM registration):','','',1,stime); 
+      else
+        stime = cat_io_cmd('SPM preprocessing 1 (estimate 1 - TPM registration):','','',1,stime); 
+      end
+      if ~isempty(job.opts.affreg) && strcmp('human',job.extopts.species) && ~useprior && job.extopts.setCOM ~= 10 % setcom == 10 - never use
+        % turn rand warning off
+        wo = warning('QUERY','MATLAB:RandStream:ActivatingLegacyGenerators'); wo = strfind( wo.state , 'on');
+        if wo, warning('OFF','MATLAB:RandStream:ActivatingLegacyGenerators'); end
+
+        if numel(job.opts.tpm)>1
+          %% merging of multiple TPMs
+          obj2 = obj; obj2.image.dat(:,:,:) = max(0.0,Ym);
+          [Affine,obj.tpm,res0] = cat_run_job_multiTPM(job,obj2,Affine,ppe.affreg.skullstripped,1); %#ok<ASGLU>
+        elseif strcmp(job.extopts.species,'human')
+          %% only one TPM (old approach); 
+          spm_plot_convergence('Init','affine registration to TPM','Mean squared difference','Iteration');
+
+          % first we start with the given affine registration and affreg parameter (e.g. mni) and a very low resolution
+          % RD202007: also here different maskings could be tested - however, it looks quite stable now 
+          [Affine2,ppe.spm_maff8.ll(1)] = spm_maff8(obj.image(1),obj.samp,(obj.fwhm+1)*16,obj.tpm,Affine ,job.opts.affreg,80); 
+          scl1 = abs(det(Affine1(1:3,1:3)));
+          scl2 = abs(det(Affine2(1:3,1:3)));
+          
+          %CG202010: disabled, because it's not working yet
+          if 0 % new approach with multiple tests
+            ppe.spm_maff8.ll_help = ['ll(1) with affreg result, ll(2) without spm_affreg init, ' ...
+              'll(3) without spm_affreg and with opts.affreg=none; only test further cases if ll(i)<0.9'];   
+            if ppe.spm_maff8.ll(1)<0.9
+              % if there was no high overlap than we try if maff8 supports better results without affreg initialization 
+              [Affine2o,ppe.spm_maff8.ll(2)] = spm_maff8(obj.image(1),obj.samp,(obj.fwhm+1)*16,obj.tpm,eye(4),job.opts.affreg,80); 
+              Affine2 = Affine2o; 
+              if ppe.spm_maff8.ll(2)<0.9
+                % especially for very small heads the mni definition is not good 
+                % we start here with the maff8 that is more robust to varying contrasts
+                [Affine2n,ppe.spm_maff8.ll(3)] = spm_maff8(obj.image(1),obj.samp,(obj.fwhm+1)*16,obj.tpm,eye(4),'none',80); 
+                if ppe.spm_maff8.ll(3) > ppe.spm_maff8.ll(2)
+                  cat_io_addwarning([mfilename ':spm_maff8n'],'Use affreg=none due to better results.',1,[1 2],ppe.spm_maff8);
+                  job.opts.affreg = 'none'; % in this case we have to update the affreg parameter
+                  Affine2 = Affine2n;
+                else
+                  if ppe.spm_maff8.ll(1) < ppe.spm_maff8.ll(2)
+                    Affine2 = Affine2o; 
+                  end
                 end
               end
-
-              if ppe.affreg.useaff2(fwhmi)==0
-                ppe.affreg.Affine2{fwhmi}   = ppe.affreg.Affine2{fwhmi-1};
-                ppe.affreg.mat2{fwhmi}      = ppe.affreg.mat2{fwhmi-1}; 
-                ppe.affreg.affll(fwhmi)     = ppe.affreg.affll(fwhmi-1); 
-                ppe.affreg.affscale2{fwhmi} = ppe.affreg.affscale2{fwhmi-1}; 
-              end
-               Affine = ppe.affreg.Affine2{fwhmi}; 
-
-              %% stop iteration if the results bring no advante 
-              if ppe.affreg.stopiter(fwhmi), break; end 
             end
           end
-          obj.Affine = Affine;
+          
+          % if nan than retry with less smoothing
+          if any(any(isnan(Affine2(1:3,:))))
+            [Affine2,ppe.spm_maff8.ll(end+1)] = spm_maff8(obj.image(1),obj.samp,(obj.fwhm+1)*4,obj.tpm,Affine ,job.opts.affreg,80);
+            if any(any(isnan(Affine2(1:3,:)))) 
+              Affine2 = Affine; 
+            end
+          else
+            % check for > 10% larger scaling 
+            if scl1 > 1.1*scl2 && job.extopts.setCOM ~= 11 % setcom == 11 - use always 
+              cat_io_addwarning([mfilename ':spm_maff8i'], ...
+               ['Inital affine registration to TPM failed, try fine.'], 1,[1 2],ppe.spm_maff8.ll(end));
+              Affine2 = Affine1;
+              scl2 = scl1;
+            end
+            
+            % after this initial step we do some refined registration with less smoothing 
+            [Affine3,ppe.spm_maff8.ll(end+1)]  = spm_maff8(obj.image(1),obj.samp,obj.fwhm,obj.tpm,Affine2,job.opts.affreg,80);
 
-
-          if 0
-            %% just for debugging!
-            if ~exist('Ym','var'), Vm = cat_spm_smoothto8bit(VF,0.5); Ysrc = Vm.dat; WMth=255; Ym = single(Ysrc)/WMth*2; end
-            VFa = VF; if isfield(VFa,'dat'), VFa = rmfield(VFa,'dat'); end
-            if 1 
-              if 0 & isfield(ppe.affreg,'Affine2') %&& ~isempty(ppe.affreg.Affine2{end})
-                VFa.mat = ppe.affreg.Affine2{2} * VF.mat; 
+            if ~any(any(isnan(Affine3(1:3,:))))
+              scl3 = abs(det(Affine3(1:3,1:3)));
+              % check for > 5% larger scaling 
+              if scl2 > 1.05*scl3 && job.extopts.setCOM ~= 11 % setcom == 11 - use always 
+                cat_io_addwarning([mfilename ':spm_maff8f'], ...
+                 ['Final affine registration to TPM failed.\\n' ...
+                  'Use affine registration from previous sucessful step.'], 1,[1 2],ppe.spm_maff8.ll(end));
+                Affine2 = Affine1;
+                %scl2 = scl1;
+                Affine = Affine2;
               else
-                VFa.mat = Affine * VF.mat;
+                Affine = Affine3;
               end
-            else % old registration
-              VFa.mat = Affine0 * VF.mat;
-            end
-            [Vmsk,Yb] = cat_vol_imcalc([VFa,spm_vol(Pb)],Pbt,'i2',struct('interp',3,'verb',0)); 
-            %[Ysrcr,Ybr] = cat_vol_resize({Ysrc,Yb},'reduceV',vx_vol,2,32,'meanm'); Tth0 = kmeans3D(Ysrcr(Ybr(:)>0.5),3);
-            %Ym = Ysrc/Tth0(3); %cat_stat_nanmean(Ysrc(Ysrc(:)>cat_stat_nanmean(Ysrc(:)))); 
-            if ~exist('WMth','var'), WMth = cat_stat_nanmean(Ysrc(Yb(:)>0.5 & Ysrc(:)>mean(Ysrc(Yb(:)>0.5)))); end
-            AC = round(inv(Affine * VF.mat) * [ 0; 0; 0; 1]);
-            if 1
-              %%
-              switch 2
-                case 1, ds('l2','',vx_vol,Ym,Yb>0.5,Ysrc/WMth,Ym,AC(3))
-                case 2, ds('l2','a',vx_vol,Ym,Yb>0.5,Ysrc/WMth,Ym,AC(2))
-                case 3, ds('l2','m',vx_vol,Ym,Yb>0.5,Ysrc/WMth,Ym,AC(1))
-              end
+            else % Affine3 failed (NaN), use Affine2
+              Affine = Affine2;
             end
           end
-          cat_err_res.obj = obj; 
+          
+          % turn warning on 
+          if wo, warning('ON','MATLAB:RandStream:ActivatingLegacyGenerators'); end
+        end
+      end
+      if 0
+        %% visual control for development and debugging
+        VFa = VF; VFa.mat = Affine * VF.mat; %Fa.mat = res0(2).Affine * VF.mat;
+        if isfield(VFa,'dat'), VFa = rmfield(VFa,'dat'); end
+        [Vmsk,Yb] = cat_vol_imcalc([VFa,spm_vol(Pb)],Pbt,'i2',struct('interp',3,'verb',0,'mask',-1));  
+        %[Vmsk,Yb] = cat_vol_imcalc([VFa;obj.tpm.V(1:3)],Pbt,'i2 + i3 + i4',struct('interp',3,'verb',0));  
+        %[Vmsk,Yb] = cat_vol_imcalc([VFa;obj.tpm.V(5)],Pbt,'i2',struct('interp',3,'verb',0));  
+        ds('d2sm','',1,Ym,Ym.*(Yb>0.5),round(size(Yb,3)*0.6))
+      end
+      
+      
+      %% test for flipping 
+      %fliptest = 1; % 1 - test x>1, 2 - test for shearing 
+      %[ppe.affreg.flipped, ppe.affreg.flippedval,stime] = cat_vol_testflipping(obj,Affine,fliptest,stime,0);
+ 
+      if ~ppe.affreg.skullstripped 
+        %% affreg with brainmask
+        if debug 
+          [AffineN,Ybi,Ymi,Ym0] = cat_run_job_APRGs(Ym,Ybg,VF,Pb,Pbt,Affine,vx_vol,obj,job); %#ok<ASGLU>
         else
-          stime = cat_io_cmd('SPM preprocessing 1 (estimate):','','',1,stime); 
-          obj.Affine = Affine; 
+          [AffineN,Ybi] = cat_run_job_APRGs(Ym,Ybg,VF,Pb,Pbt,Affine,vx_vol,obj,job);
         end
-        
-        
-        % set original non-bias corrected image in case of APP_init
-        if job.extopts.APP==3
-          obj.image = spm_vol(obj.image);
-        end
+        if ~useprior, Affine = AffineN; end
+        clear AffineN; 
+      end
 
-        
-        %% guarantee SPM image requirements of gaussian distributed data
-        %  Add noise to regions with low intensity changes that are mosty 
-        %  caused by skull-stripping, defacing, or simulated data and can
-        %  lead to problems in SPM tissue peak estimation. 
+      if ppe.affreg.skullstripped || job.extopts.gcutstr<0
+        %% update number of SPM gaussian classes 
+        Ybg = 1 - spm_read_vols(obj.tpm.V(1)) - spm_read_vols(obj.tpm.V(2)) - spm_read_vols(obj.tpm.V(3));
+        noCSF = job.extopts.gcutstr == -2; 
         if 1
-          %%
-          Ysrc  = single(spm_read_vols(obj.image));
-          
-          Yg    = cat_vol_grad(Ysrc,vx_vol);
-          Ygnth = cat_stat_nanmean( min(0.3,Yg(:)./max(eps,Ysrc(:))) );
-          gno   = Ysrc( ( Yg(:)./max(eps,Ysrc(:)) )<Ygnth/2 & Ysrc(:)>cat_stat_nanmean(Ysrc(:)) ); 
-          Tthn  = mean( Ysrc( ( Yg(:)./max(eps,Ysrc(:)) )<Ygnth/2 & ...
-                    Ysrc(:)>(cat_stat_nanmean(gno) - 1*cat_stat_nanstd(gno)) & ...
-                    Ysrc(:)<(cat_stat_nanmean(gno) + 4*cat_stat_nanstd(gno))) ); 
-          Ysrcn = max( min(Ysrc(:)) , Ysrc + ( randn(size(Ysrc))*Tthn*0.005 + (rand(size(Ysrc))-0.5)*Tthn*0.01 ) .*  ...
-            cat_vol_smooth3X( Ysrc/Tthn<0.01 | Yg/Tthn<0.01 | Yg./max(eps,Ysrc)<0.01 , 4 ));
-
-          [h,i] = hist(Ysrcn(Ysrc~=0 & ~isnan(Ysrc)),1000); maxth = cumsum(h);
-          idl = find(maxth/max(maxth)>0.02,1,'first'); 
-          idh = find(maxth/max(maxth)>0.98,1,'first'); 
-          iil = i(idl) - diff([idl idh])*0.5; 
-          iih = i(idh) + diff([idl idh])*0.5; 
-          Ysrcn = max( iil , min( iih , Ysrcn )); 
-        
-          % should be used above .. however SPM don't like it ... 
-          if ~strcmp(job.extopts.species,'human') && exist('Yb','var')
-            Ysrcn = Ysrcn .* cat_vol_morph(Yb,'d',3); 
-            ppe.affreg.skullstripped = 1;
-          end
-          
-          
-          %%
-          spm_write_vol(obj.image,Ysrcn); 
-          if ~debug, clear Ysrc Yg Ysrcn; end
-        end
-       
-        %%
-        if ppe.affreg.skullstripped  
-          %% update number of SPM gaussian classes 
-          Ybg = 1 - spm_read_vols(obj.tpm.V(1)) - spm_read_vols(obj.tpm.V(2)) - spm_read_vols(obj.tpm.V(3));
-          obj.tpm.V(4).dat = Ybg; 
-          obj.tpm.dat{4}   = Ybg; 
-          obj.tpm.V(4).pinfo = repmat([1;0],1,size(Ybg,3));
-          obj.tpm.dat(5:6) = []; 
-          obj.tpm.V(5:6)   = []; 
-          obj.tpm.bg1(4)   = obj.tpm.bg1(6);
-          obj.tpm.bg2(4)   = obj.tpm.bg1(6);
-          obj.tpm.bg1(5:6) = [];
-          obj.tpm.bg2(5:6) = [];
-
-          job.opts.ngaus = [job.opts.ngaus(1:3) 1];
-          obj.lkp        = [];
-          for k=1:numel(job.opts.ngaus)
-            job.tissue(k).ngaus = job.opts.ngaus(k);
-            obj.lkp = [obj.lkp ones(1,job.tissue(k).ngaus)*k];
+          for k=1:3 - noCSF
+            obj.tpm.dat{k}     = spm_read_vols(obj.tpm.V(k));
+            obj.tpm.V(k).dt(1) = 64;
+            obj.tpm.V(k).dat   = double(obj.tpm.dat{k});
+            obj.tpm.V(k).pinfo = repmat([1;0],1,size(Ybg,3));
           end
         end
 
-        
-        
-        
-        %% SPM preprocessing 1
-        %  ds('l2','a',0.5,Ym,Ybg,Ym,Ym,140);
-        %  ds('l2','a',0.5,Ysrc/WMth,Yb,Ysrc/WMth,Yb,140);
-        warning off 
-        try 
-          res = spm_preproc8(obj);
-        catch
-          % only in default mode
-          if job.extopts.expertgui==0 
-            job2          = job;
-            job2.channel(1).vols{subj} = job.channel(1).vols0{subj};
-            if job.extopts.APP<1
-              cat_io_cprintf('err','\n  Failed, try APP=1! \n'); 
-              job2.extopts.APP = 1; 
-            elseif job.extopts.APP<4
-              cat_io_cprintf('err','\n  Failed, try APP=4! \n'); 
-              job2.extopts.APP = 4; 
-            end
-            cat_run_job(job2,tpm,subj); 
-            return
-          end
-          if ppe.affreg.skullstripped  
-            obj.tpm = tpm; 
-          end
-          
-          
-          if job.extopts.NCstr || any( (vx_vol ~= vx_voli) ) || ~strcmp(job.extopts.species,'human')
-            [pp,ff,ee] = spm_fileparts(job.channel(1).vols{subj});
-            delete(fullfile(pp,[ff,ee]));
-            error('CAT:cat_run_job:spm_preproc8','Error in spm_preproc8. Check image and orientation. \n');
-          end
-        end
-        
-        warning on 
-        if exist('ppe','var'), res.ppe = ppe; end
+        obj.tpm.V(4 - noCSF).dat = Ybg;
+        obj.tpm.dat{4 - noCSF}   = Ybg; 
+        obj.tpm.V(4 - noCSF).pinfo = repmat([1;0],1,size(Ybg,3));
+        obj.tpm.V(4 - noCSF).dt(1) = 64;
+        obj.tpm.dat(5 - noCSF:6) = []; 
+        obj.tpm.V(5 - noCSF:6)   = []; 
+        obj.tpm.bg1(4 - noCSF)   = obj.tpm.bg1(6);
+        obj.tpm.bg2(4 - noCSF)   = obj.tpm.bg1(6);
+        obj.tpm.bg1(5 - noCSF:6) = [];
+        obj.tpm.bg2(5 - noCSF:6) = [];
+        %obj.tpm.V = rmfield(obj.tpm.V,'private');
 
-        if job.extopts.experimental
-            % save information for debuging and OS test
-            [pth,nam] = spm_fileparts(job.channel(1).vols0{subj}); 
-            tmpmat = fullfile(pth,reportfolder,sprintf('%s_%s_%s.mat',nam,'runjob','postpreproc8')); 
-            save(tmpmat,'obj','res','Affine','Affine0','Affine1','Affine2');     
+        % tryed 3 peaks per class, but BG detection error require manual 
+        % correction (set 0) that is simple with only one class  
+        if noCSF
+          job.opts.ngaus = ([job.tissue(1:3).ngaus])'; 
+        else
+          job.opts.ngaus = [([job.tissue(1:3).ngaus])';1]; % 3*ones(4,1);1; 
+        end
+        obj.lkp        = [];
+        for k=1:numel(job.opts.ngaus)
+          job.tissue(k).ngaus = job.opts.ngaus(k);
+          obj.lkp = [obj.lkp ones(1,job.tissue(k).ngaus)*k];
+        end
+      end
+      
+      % adpation parameter for affine registration? 0.98 and 1.02?
+      if isfield(job.extopts,'affmod') && any(job.extopts.affmod)
+        stime = cat_io_cmd('  Modify affine regitration:','','',1,stime); 
+        AffineUnmod = Affine; 
+        if numel(job.extopts.affmod)>6, job.extopts.affmod = job.extopts.affmod(1:6); end % remove too many
+        if numel(job.extopts.affmod)<3, job.extopts.affmod(end+1:3) = job.extopts.affmod(1); end % isotropic
+        if numel(job.extopts.affmod)<6, job.extopts.affmod(end+1:6) = 0; end % add translation
+        sf   = (100 - job.extopts.affmod(1:3)) / 100;  
+        imat = spm_imatrix(Affine); 
+        COMc = [eye(4,3), [ 0; -24 / mean(imat(7:9)); -12 / mean(imat(7:9)); 1]  ]; 
+        imat = spm_imatrix(Affine * COMc); 
+        imat(1:3) = imat(1:3) + job.extopts.affmod(4:6); 
+        imat(7:9) = imat(7:9) .* sf;  
+        AffineMod = spm_matrix(imat) / COMc; 
+        
+        res.AffineUnmod = AffineUnmod; 
+        res.AffineMod   = AffineMod;
+      else
+        AffineMod = Affine;
+      end 
+      obj.Affine  = AffineMod;
+      cat_err_res.obj = obj; 
+    
+      
+      %% SPM preprocessing 1
+      %  ds('l2','a',0.5,Ym,Ybg,Ym,Ym,140);
+      %  ds('l2','a',0.5,Ysrc/WMth,Yb,Ysrc/WMth,Yb,140);
+      warning off 
+      try 
+        % inital estimate
+        stime = cat_io_cmd('SPM preprocessing 1 (estimate 2 - Unified segmentation):','','',job.extopts.verb-1,stime);
+        obj.tol = job.opts.tol; 
+        
+        % RD202012:  Missclassification of GM as CSF and BG as tissue:
+        %  We observed problems with high-quality data (e.g. AVGs) and
+        %  interpolated low resolution data (single_subT1=Collins), 
+        %  where (low-intensity) GM was missclassified as CSF but also 
+        %  miss-classification of background. The problems where caused
+        %  by the US (or better the way we use it here) and higher
+        %  accuracy (increased number of minimum iterations in 
+        %  cat_spm_preproc8) was essential. Nevertheless, some
+        %  cases still cause severe errors at 3 mm sample size but 
+        %  not for other resolutions (eg. 4, 6, 2 mm). In addition, the
+        %  log-likelihood became NaN in such cases. Hence, I added a 
+        %  little loop her to test other resolutions for samp. We keep
+        %  the output here quit simple to avoid confusion. samp is a
+        %  rarely used expert parameter and other resolutions are only 
+        %  used as backup and the effects should be not too strong for 
+        %  normal data without strong bias. 
+
+        % sampling resolution definition
+        if      round(obj.samp) == 3, samp = [obj.samp 4 2]; 
+        elseif  round(obj.samp) == 2, samp = [obj.samp 3 4]; 
+        elseif  ~strcmp(job.extopts.species,'human')
+                                      samp = [obj.samp obj.samp*2 obj.samp/2];          
+        else,                         samp = [obj.samp 3 2]; 
         end 
-        cat_err_res.res = res;   
 
-        fprintf('%4.0fs\n',etime(clock,stime));   
+        if job.opts.redspmres 
+          image1 = obj.image; 
+          [obj.image,redspmres]  = cat_vol_resize(obj.image,'interpv',1);
+        end
+        
+        % run loop until you get a non NaN
+        % #### additional threshold is maybe also helpful ####
+        warning off; % turn off "Warning: Using 'state' to set RANDN's internal state causes RAND ..."
+        for sampi = 1:numel(samp)
+          obj.samp = samp(sampi); 
+          try 
+            res = cat_spm_preproc8(obj);
+            if any(~isnan(res.ll))
+              break
+            else
+              stime = cat_io_cmd(sprintf('SPM preprocessing 1 (estimate %d):',...
+                2 + sampi),'caution','',job.extopts.verb-1,stime);
+            end
+          catch  
+            % RD202110: Catch real errors of cat_spm_preproc8 and try a 
+            %           skull-stripped version just to get some result.
+            stime = cat_io_cmd(sprintf('SPM preprocessing 1 (estimate %d skull-stripped):',...
+                2 + sampi),'caution','',job.extopts.verb-1,stime);
+            if exist('Ybi','var') % use individual mask
+              obj.image.dat = obj.image.dat .* (cat_vbdist(single(Ybi>0.5))<10);
+            else % use template mask 
+              VFa = VF; VFa.mat = Affine * VF.mat; %Fa.mat = res0(2).Affine * VF.mat;
+              if isfield(VFa,'dat'), VFa = rmfield(VFa,'dat'); end
+              [Vmsk,Yb] = cat_vol_imcalc([VFa,spm_vol(Pb)],Pbt,'i2',struct('interp',3,'verb',0,'mask',-1));  
+              ds('d2sm','',1,Ym,Ym.*(Yb>0.5),round(size(Yb,3)*0.6))
+              obj.image.dat = obj.image.dat .* (cat_vbdist(single(Yb>0.5))<10);
+            end 
+            res = cat_spm_preproc8(obj);
+            if any(~isnan(res.ll))
+              break
+            else
+              stime = cat_io_cmd(sprintf('SPM preprocessing 1 (estimate %d):',...
+                2 + sampi),'caution','',job.extopts.verb-1,stime);
+            end
+          end
+        end
+        warning on; 
+        
+        if job.opts.redspmres
+          res.image1 = image1; 
+          clear reduce; 
+        end
+        
+        % unknown BG detection problems in INDI_NHa > manual setting
+        if ppe.affreg.skullstripped, res.mn(end) = 0; end 
 
-        %error('Affine Registration test error'); % uncomment this line to test error report 
+      catch
+        cat_io_addwarning([mfilename ':ignoreErrors'],'Run backup function (IN DEVELOPMENT).',1,[1 1]); 
+        
+        if isfield(obj.image,'dat')
+          tmp = obj.image.dat; 
+        else
+          tmp = spm_read_vols(obj.image); 
+          dt2 = cat_io_strrep(spm_type(obj.image.dt(1)),{'float32','float64'},{'single','double'}); 
+          obj.image.dat = eval(sprintf('%s(tmp);',dt2)); 
+          obj.image.pinfo = repmat([1;0],1,size(tmp,3));
+        end
+        if exist('Ybi','var')
+          obj.image.dat = obj.image.dat .* (cat_vbdist(single(Ybi>0.5))<10);
+        else
+          VFa = VF; VFa.mat = Affine * VF.mat; %Fa.mat = res0(2).Affine * VF.mat;
+          if isfield(VFa,'dat'), VFa = rmfield(VFa,'dat'); end
+          [Vmsk,Yb] = cat_vol_imcalc([VFa,spm_vol(Pb)],Pbt,'i2',struct('interp',3,'verb',0,'mask',-1));  
+          ds('d2sm','',1,Ym,Ym.*(Yb>0.5),round(size(Yb,3)*0.6))
+          obj.image.dat = obj.image.dat .* (cat_vbdist(single(Yb>0.5))<10);
+        end
+        
+        suc = 0;
+        while obj.tol<1
+          obj.tol = obj.tol * 10;
+          try
+            res = cat_spm_preproc8(obj);
+            suc = 1;
+          end
+        end
+        
+        if any( (vx_vol ~= vx_voli) ) || ~strcmp(job.extopts.species,'human')
+          [pp,ff,ee] = spm_fileparts(job.channel(1).vols{subj});
+          delete(fullfile(pp,[ff,ee]));
+        end
+      end
+      if job.extopts.expertgui>1
+        %% print the tissue peaks 
+        mnstr = sprintf('\n  SPM-US:  ll=%0.6f, Tissue-peaks: ',res.ll);
+        for lkpi = 1:numel(res.lkp)
+          if lkpi==1 || ( res.lkp(lkpi) ~= res.lkp(lkpi-1) )
+            mnstr = sprintf('%s  (%d) ',mnstr,res.lkp(lkpi)); 
+          end
+          if lkpi>1 &&( res.lkp(lkpi) == res.lkp(lkpi-1) ), mnstr = sprintf('%s, ',mnstr); end
+          if sum(res.lkp == res.lkp(lkpi))>1 && res.mg(lkpi)==max( res.mg( res.lkp == res.lkp(lkpi) )), mnstr = sprintf('%s*',mnstr); end
+          mnstr = sprintf('%s%0.2f',mnstr,res.mn( lkpi )); 
+        end
+        cat_io_cprintf('blue',sprintf('%s\n',mnstr)); 
+        cat_io_cmd(' ',' ');
+      end
+      fprintf('%5.0fs\n',etime(clock,stime));
+      clear Ysrc; 
 
 
-        %% check contrast
+             
+      
+      %% check contrast (and convergence)
+      %  RD202006: SPM peak averaging 
+      %  To get one single tissue value the following definition is correct 
+      %  in principle but outliers can have strong effect on mean estimation: 
+      %    clsint = @(x) round( sum(res.mn(res.lkp==x) .* res.mg(res.lkp==x)') * 10^5)/10^5;
+      %  So we have to be careful by using these values.
+      if ~isempty(res)  
         clsint = @(x) round( sum(res.mn(res.lkp==x) .* res.mg(res.lkp==x)') * 10^5)/10^5;
         Tgw = [cat_stat_nanmean(res.mn(res.lkp==1)) cat_stat_nanmean(res.mn(res.lkp==2))]; 
         Tth = [
           ... min(res.mn(res.lkp==6 & res.mg'>0.3)) ... % bg; ignore the background, because of MP2RGAGE, R1, and MT weighted images  
-          max( min( clsint(3) ,  max(Tgw)+abs(diff(Tgw))) , min(Tgw)-abs(diff(Tgw)) ) ... % csf with limit for T2!
+          max( min( clsint(3) ,  max(Tgw) + 1.5*abs(diff(Tgw))) , min(Tgw) - 1.5*abs(diff(Tgw)) ) ... % csf with limit for T2!
           clsint(1) ... gm
           clsint(2) ... wm 
+          clsint(4) ... skull
+          clsint(5) ... head tissue
+          clsint(6) ... background
         ];
-        %if isfield(obj,'msk'), res.msk = obj.msk; end
-        
-          
-        % inactive preprocessing of inverse images (PD/T2) 
-        if job.extopts.INV==0 && any(diff(Tth)<=0)
-          error('CAT:cat_main:BadImageProperties', ...
-          ['CAT12 is designed to work only on highres T1 images.\n' ...
-           'T2/PD preprocessing can be forced on your own risk by setting \n' ...
-           '"cat12.extopts.INV=1" in the cat default file. If this was a highres \n' ...
-           'T1 image than the initial segmentation seemed to be corrupded, maybe \n' ...
-           'by alignment problems (check image orientation).']);    
-        end
 
-    end
-    
-    
-    %% call main processing
-    res.stime  = stime;
-    res.image0 = spm_vol(job.channel(1).vols0{subj}); 
-    cat_main(res,obj.tpm,job);
-    
-    % delete denoised/interpolated image
-    [pp,ff,ee] = spm_fileparts(job.channel(1).vols{subj});
-    if exist(fullfile(pp,[ff,ee]),'file'); 
-      delete(fullfile(pp,[ff,ee]));
-    end
-%%
+        res.Tth = Tth; 
+        cat_err_res.res = res;   
+
+        % RD202006: Throw warning/error?
+        % Due to inaccuracies of the clsint function it is better to print 
+        % this as intense warning.
+        if any( Tth(2:3)<0 ) || job.test_warnings
+          cat_io_addwarning([mfilename ':negVal'],sprintf( ...
+           ['CAT12 was developed for images with positive values and \\\\n', ...
+            'negative values can lead to preprocessing problems. The average \\\\n', ...
+            'intensities of CSF/GM/WM are %0.4f/%0.4f/%0.4f. \\\\n', ...
+            'If you observe problems, you can use the %s to scale your data.'], Tth(1:3), ...
+            spm_file('Datatype-batch','link','spm_jobman(''interactive'','''',''spm.tools.cat.tools.spmtype'');')),2,[0 1],Tth);
+        end
+      end
+
+  end
+  
+  % updated tpm information for skull-stripped data should be available for cat_main
+  if isfield(obj.tpm,'bg1') && exist('ppe','var') && ( ppe.affreg.skullstripped || job.extopts.gcutstr<0 )
+    fname = res.tpm(1).fname;
+    res.tpm       = obj.tpm;
+    res.tpm(1).fname = fname;
+  end
+  spm_progress_bar('Clear');
+          
+  %% call main processing
+  res.tpm     = obj.tpm.V;
+  if exist('ppe'), res.ppe = ppe; end
+  res.stime   = stime0;
+  res.catlog  = catlog; 
+  res.Affine0 = res.Affine; %AffineMod; 
+  if isfield(job.extopts,'affmod') && any(job.extopts.affmod)
+    res.AffineUnmod = AffineUnmod; 
+    res.AffineMod   = AffineMod;
+  end
+  if exist('Ybge','var')
+    % If the background was estimated we want to save it to improve the 
+    % SPM segmentation in regions outside the TPM volume. 
+    res.bge = Ybge; 
+  end
+  res.image0 = spm_vol(job.channel(1).vols0{subj}); 
+  if exist('Ylesion','var'), res.Ylesion = Ylesion; else, res.Ylesion = false(size(res.image.dim)); end; clear Ylesion;
+  if exist('redspmres','var'); res.redspmres = redspmres; res.image1 = image1; end
+  job.subj = subj; 
+  cat_main(res,obj.tpm,job);
+  
+  % delete denoised/interpolated image
+  [pp,ff,ee] = spm_fileparts(job.channel(1).vols{subj});
+  if exist(fullfile(pp,[ff,ee]),'file') 
+    delete(fullfile(pp,[ff,ee]));
+  end
+  %%
+  
+  if usediary
+    diary off;
+  end
 return
+
 %=======================================================================
-function r = roundx(r,rf)
-  r(:) = round(r(:) * rf) / rf;
+function [Ym,Yt,Ybg,WMth] = APPmini(obj,VF,histth)
+%% very simple affine preprocessing (APP)
+%  ------------------------------------------------------------------------
+%  Creates an intensity normalized image Ym by the average higher tissue
+%  intensity WMth estimated in the mask Yt. Moreover, it estimates the
+%  background region Ybg. 
+%
+%  [Ym,Yt,Ybg,WMth] = APPmini(obj,VF)
+%  ------------------------------------------------------------------------
+%  Robert Dahnke 2019/01
+
+  Ysrc = single(obj.image.private.dat(:,:,:)); 
+
+  % remove outlier and use SPM for intensity normalization to uint8 
+  % empirical division by 200 to get WM values around 1.0
+  Ysrc = cat_stat_histth(Ysrc,histth,struct('scale',[0 1]));
+  VF0  = cat_spm_smoothto8bit(VF,0.1); 
+  Ym   = single(VF0.dat)/200; clear VG0 
+  
+  % find the larges object and estimate the averag intensity
+  % keep in mind that this will may inlcude the head (and in MP2RAGE/MT/R1
+  % images also the background), i.e. highest intensity is may head,
+  % blood vessels or WM or CSF in T1/PD
+  Yt   = cat_vol_morph(Ym>cat_stat_nanmean(Ym(Ym(:)>0.1)),'l',[100 1000])>0.5;
+  WMth = cat_stat_kmeans( Ysrc(Yt(:)) , 1); 
+  
+  % rescale Ym and roughly estimate the background (not in MP2Rage/MT/R1)
+  Ym   = Ysrc ./ WMth;
+  Ybg  = cat_vol_morph(Ym<0.2,'l',[20 0.05])>0;
+  
 return
-%=======================================================================
+
+function APP_RMSE = checkAPP(Ym,Ysrc,histth) 
+%% check Ym
+%  ------------------------------------------------------------------------
+%  Function to compare the normalized gradient maps of two input images 
+%  that should be nearly identical.
+%
+%  APP_RMSE = checkAPP(Ym,Ysrc) 
+%  ------------------------------------------------------------------------
+%  Robert Dahnke 2019/01
+
+  % remove strongest outlier
+  Ym   = cat_stat_histth(Ym  ,histth);
+  Ysrc = cat_stat_histth(Ysrc,histth);
+
+  % avoid division by zeros
+  Ym   = Ym   + min(Ym(:));
+  Ysrc = Ysrc + min(Ysrc(:)); 
+  
+  % normalized gradient maps
+  Ygm = cat_vol_grad(Ym)   ./ (Ym + eps);     
+  Ygs = cat_vol_grad(Ysrc) ./ (Ysrc + eps);
+
+  % use only the central region and values in the expected tissue range
+  sYm  = round(size(Ym) / 5);
+  Ymsk = false(size(Ym) ); Ymsk(sYm(1):end-sYm(1),sYm(2):end-sYm(2),sYm(3):end-sYm(3)) = true;  
+  Ymsk = Ymsk & cat_vol_morph(Ygm<2 & Ygs<2 & Ym>0.5 & Ysrc>0.5,'e');
+  
+  % general error between both images within the mask
+  APP_RMSE = cat_stat_nanmean( ( Ygm(Ymsk(:)) - Ygs(Ymsk(:)) ).^2 )^0.5;
+  
+return

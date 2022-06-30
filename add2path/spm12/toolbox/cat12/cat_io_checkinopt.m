@@ -1,11 +1,14 @@
 function res = cat_io_checkinopt(opt, def, cond)
 % format: res = checkin(opt,def,cond)
-% _________________________________________________________________________
-% Robert Dahnke 2011_01
-% Structural Brain Mapping Group 
-% University Jena
-% $Id: cat_io_checkinopt.m 833 2016-01-17 22:23:32Z gaser $
-% _________________________________________________________________________  
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_io_checkinopt.m 1791 2021-04-06 09:15:54Z gaser $
+
 
   if ~exist('def','var'),  def=[]; end
   if ~exist('cond','var'), cond=[]; end

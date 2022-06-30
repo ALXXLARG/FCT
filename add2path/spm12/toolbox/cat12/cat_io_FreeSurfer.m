@@ -3,7 +3,7 @@ function varargout=cat_io_FreeSurfer(action,varargin)
 % 
 % Read/Write FreeSurfer Data. 
 %
-% Use FreeSurfer in/output functions created by Burce Fischl, Doug Greve,
+% Use FreeSurfer in/output functions created by Bruce Fischl, Doug Greve,
 % Thomas Yeo, and Mert Sabuncu.
 %
 %   varargout = cat_io_FreeSurfer(action,varargin)
@@ -22,7 +22,7 @@ function varargout=cat_io_FreeSurfer(action,varargin)
 %   cat_io_FreeSurfer('write_annotation', ...
 %      fname, vertices, label, colortable);
 %
-% * GIFTI to FreeSurfer / FreeSurfer ot GIFTI: 
+% * GIFTI to FreeSurfer / FreeSurfer to GIFTI: 
 %   [P] = cat_io_FreeSurfer('gii2fs',fname);
 %   [P] = cat_io_FreeSurfer('gii2fs',...
 %           struct('data',{fnames},'delete',[0|1]));
@@ -32,12 +32,12 @@ function varargout=cat_io_FreeSurfer(action,varargin)
 %           struct('data',{fnames},'cdata',{cfnames},'delete',[0|1]));
 % ______________________________________________________________________
 %
-%   Robert Dahnke (robert.dahnke@uni-jena.de)
-%   Structural Brain Mapping Group (http://dbm.neuro.uni-jena.de/)
-%   Department of Neurology
-%   University Jena
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
 % ______________________________________________________________________
-% $Id: cat_io_FreeSurfer.m 1103 2017-01-13 10:01:32Z gaser $ 
+% $Id: cat_io_FreeSurfer.m 1888 2021-10-12 13:49:25Z gaser $ 
 
   if ~exist('action','var'), help cat_io_FreeSurfer; return; end
   if nargin==0, varargin{1} = struct(); end
@@ -53,6 +53,12 @@ function varargout=cat_io_FreeSurfer(action,varargin)
   switch action
     %case 'FSatlas2cat'
     %  varargout{1} = cat_surf_FSannotation2CAT(varargin{1});
+    case 'fs2cat'
+      if isdir(varargin{1})
+        covertFS2CAT(varargin)
+      else
+        covertFS2CAT
+      end
     case 'gii2fs'
       if nargout==1
         varargout{1} = gii2fs(varargin{1}); 
@@ -69,9 +75,9 @@ function varargout=cat_io_FreeSurfer(action,varargin)
       end
     case 'read_annotation'
       if nargin==2
-        [varargout{1}, varargout{2}, varargout{3}] = Read_Brain_Annotation(varargin{1}); 
+        [varargout{1}, varargout{2}, varargout{3}] = read_annotation(varargin{1}); 
       else
-        [varargout{1}, varargout{2}, varargout{3}] = Read_Brain_Annotation(varargin{1}, varargin(2:end)); 
+        [varargout{1}, varargout{2}, varargout{3}] = read_annotation(varargin{1}, varargin(2:end)); 
       end
       varargout{4} = [{'ROIid'},{'ROIname'};num2cell(varargout{3}.table(1:end,5)),varargout{3}.struct_names];
     case 'write_annotation' 
@@ -82,51 +88,116 @@ function varargout=cat_io_FreeSurfer(action,varargin)
       write_surf(varargin{1}, varargin{2}.vertices, varargin{2}.faces);
     case 'read_surf'
       [varargout{1}.vertices,varargout{1}.faces] = read_surf(varargin{1}); 
-      varargout{1}.faces = varargout{1}.faces+1;   
+      % varargout{1}.faces = varargout{1}.faces+1;   
     case 'write_surf_data'
       write_curv(varargin{1},varargin{2});
     case 'read_surf_data'
       [varargout{1},varargout{2}] = read_curv(varargin{1});
     otherwise
       error(['cat_io_FreeSurfer:unknownAction','Unknown action ''%s''!\n' ...
-             'Use ''write_surf'',''read_surf'',''write_surf_data'',''read_surf_data'',''gii2fs'',''fs2gii.\n'],action);
+             'Use ''write_surf'',''read_surf'',''write_surf_data'',''read_surf_data'',''gii2fs'',''fs2gii'',''read_annotation'',''write_annotation''.\n'],action);
   end
 
+end
+
+function covertFS2CAT(varargin)
+%% convert surface data of one subject ... 
+  % start with the CS my add some other maps?
+  if ~exist('varargin','var') || isempty(varargin{1})
+    job.sdirs = spm_select(inf,'dir','Choose FreeSurfer subject directories!'); 
+  else
+    job.sdirs = varargin{1}.sdirs; 
+  end
+  job.sdirs = cellstr(job.sdirs); 
+
+  % default options
+  def.sides  = {'lh','rh'};           % developer: hemisspheres
+  def.offset = [-3.25 38.25 -20.5];   % developer: tranlation ... > affine transformation?
+  def.limit  = 300000;                % developer: reduce surfaces ... not realy
+  def.resdir = '';                    % ... prepare this somewere else ...
+  def.mri    = {};                    % ... convert these files to nifti (nu? & seg & atlas?)
+  def.surf   = {'thickness';'area';'curvature'}; % copy these surface datasets
+  job = checkinopt(job,def); 
+
+  for si=1:numel(sdirs)
+    %% get subject directory
+    if strcmp(job.sdirs{si}(end-4:end),'surf')
+      sdir = spm_fileparts(sdir{si}); 
+    elseif strcmp(job.sdirs{si}(end-7:end),'subjects')
+      sdir = cat_vol_findfiles(job.sdirs{si},'*',struct('depth',1)); 
+    else
+      sdir = job.sdirs{si};
+    end
+
+    %% get subject name
+    [FS_sujects,subname1,subname2] = spm_fileparts(sdir);
+    subname = [subname1,subname2]; 
+
+    for hi=1:numel(job.sides)
+      %%
+      Pwhite    = fullfile(sdir,'surf',sprintf('%s.white',job.sides{hi})); 
+      Ppial     = fullfile(sdir,'surf',sprintf('%s.pial',job.sides{hi})); 
+      PCcentral = fullfile(sdir,'surf',sprintf('%s.central.%s',job.sides{hi},subname)); 
+      PCwhite   = fullfile(sdir,'surf',sprintf('%s.white.%s',job.sides{hi},subname)); 
+      PCpial    = fullfile(sdir,'surf',sprintf('%s.pial.%s',job.sides{hi},subname)); 
+      PCpial    = fullfile(sdir,'surf',sprintf('%s.sphere.%s',job.sides{hi},subname)); 
+      PCpial    = fullfile(sdir,'surf',sprintf('%s.pial.%s',job.sides{hi},subname)); 
+
+      Swhite   = cat_io_FreeSurfer('read_surf',Pwhite);
+      Spial    = cat_io_FreeSurfer('read_surf',Ppial);
+      Scentral.vertices = Swhite.vertices/2 + Spial.vertices/2;
+      Scentral.faces    = Swhite.faces;
+      if 0 %job.limit
+        Scentral = reducepatch(patch(Scentral),job.limit); 
+      end
+      if ~isempty(job.offset)
+        Scentral.vertices = Scentral.vertices + repmat(job.offset,size(Scentral.vertices,1),1);
+        Swhite.vertices   = Swhite.vertices   + repmat(job.offset,size(Swhite.vertices,1),1);
+        Spial.vertices    = Spial.vertices    + repmat(job.offset,size(Spial.vertices,1),1);
+      end
+      save(gifti(Scentral),[PCcentral '.gii']); 
+      save(gifti(Swhite),[PCwhite '.gii']);
+      save(gifti(Spial),[PCpial '.gii']);
+
+      %clear Sinner Souter Scentral;
+    end
+  end
 end
 
 function job = getjob(job0,sel)
-  if isstruct(job0)
-    job = job0; 
-  else 
-    job.data = job0;
-  end
-  if ~isfield(job,'data') || isempty(job.data)
-    job.data = spm_select(inf,'any','Select surface','','',sel);
-  end
-  if isempty(job.data), return; end
-  
-  job.data  = cellstr(job.data);
-  if isfield(job,'cdata'), job.cdata = cellstr(job.cdata); end
-  if isfield(job,'cdata') && isfield(job,'data') && ...
-      numel(job.cdata) ~= numel(job.data)
-    error('cat_io_FreeSurfer:getjob:data','Number of surface meshes and textures have to be equivalent'); 
-  end
-  
-  for si=1:numel(job.data)
-    if isfield(job,'cdata')
-      [pp,ff,ee] = spm_fileparts(job.cdata{si});
-    else
-      [pp,ff,ee] = spm_fileparts(job.data{si});
-    end
-    def.fname{si} = strrep(fullfile(pp,[ff ee]),'.gii',''); 
-  end
-  
-  def.verb    = 0; 
-  def.delete  = 0; 
-  def.merge   = 0;
-  
-  job = cat_io_checkinopt(job,def);
+if isstruct(job0)
+job = job0; 
+else 
+job.data = job0;
 end
+if ~isfield(job,'data') || isempty(job.data)
+job.data = spm_select(inf,'any','Select surface','','',sel);
+end
+if isempty(job.data), return; end
+
+job.data  = cellstr(job.data);
+if isfield(job,'cdata'), job.cdata = cellstr(job.cdata); end
+if isfield(job,'cdata') && isfield(job,'data') && ...
+numel(job.cdata) ~= numel(job.data)
+error('cat_io_FreeSurfer:getjob:data','Number of surface meshes and textures have to be equivalent'); 
+end
+
+for si=1:numel(job.data)
+if isfield(job,'cdata')
+[pp,ff,ee] = spm_fileparts(job.cdata{si});
+else
+[pp,ff,ee] = spm_fileparts(job.data{si});
+end
+def.fname{si} = strrep(fullfile(pp,[ff ee]),'.gii',''); 
+end
+
+def.verb    = 0; 
+def.delete  = 0; 
+def.merge   = 0;
+
+job = cat_io_checkinopt(job,def);
+end
+
 function varargout = gii2fs(varargin)
 % convert gifti surfaces to FreeSurfer 
   job = getjob(varargin,'[lr]h.*.gii');
@@ -195,6 +266,8 @@ function varargout = fs2gii(varargin)
     
     if isfield(job,'cdata') 
       S.cdata = read_curv(job.cdata{si});     
+    elseif ~exist('S','var')
+      S.cdata = read_curv(job.data{si});     
     end
     
     job.fname{si} = [job.fname{si} '.gii'];
@@ -203,6 +276,7 @@ function varargout = fs2gii(varargin)
     if job.delete
       delete(job.data{si});
     end
+    clear S;
   end
   
   if nargout>0
@@ -245,13 +319,13 @@ function annots = cat_surf_FSannotation2CAT(job)
   
 end
 
-function write_surf(fname, vert, face)
+function write_surf(filename, vert, face)
 % write_surf - FreeSurfer I/O function to write a surface file
 % 
-% write_surf(fname, vert, face)
+% write_surf(filename, vert, face)
 % 
 % writes a surface triangulation into a binary file
-% fname - name of file to write
+% filename - name of file to write
 % vert  - Nx3 matrix of vertex coordinates
 % face  - Mx3 matrix of face triangulation indices
 % 
@@ -262,7 +336,7 @@ function write_surf(fname, vert, face)
 % See also freesurfer_read_surf, freesurfer_write_curv, freesurfer_write_wfile
 
   if(nargin ~= 3)
-    fprintf('USAGE: freesurfer_write_surf(fname, vert, face)\n');
+    fprintf('USAGE: freesurfer_write_surf(filename, vert, face)\n');
     return;
   end
 
@@ -278,7 +352,7 @@ function write_surf(fname, vert, face)
   face = face - 1;
 
   % open it as a big-endian file
-  fid = fopen(fname, 'wb', 'b') ;
+  fid = fopen(filename, 'wb', 'b') ;
 
   TRIANGLE_FILE_MAGIC_NUMBER = 16777214 ;
   fwrite3(fid, TRIANGLE_FILE_MAGIC_NUMBER);
@@ -304,9 +378,9 @@ function write_surf(fname, vert, face)
 
 end
 
-function [vertex_coords, faces] = read_surf(fname)
+function [vertex_coords, faces] = read_surf(filename)
   %
-  % [vertex_coords, faces] = read_surf(fname)
+  % [vertex_coords, faces] = read_surf(filename)
   % reads a the vertex coordinates and face lists from a surface file
   % note that reading the faces from a quad file can take a very long
   % time due to the goofy format that they are stored in. If the faces
@@ -321,8 +395,8 @@ function [vertex_coords, faces] = read_surf(fname)
   % Original Author: Bruce Fischl
   % CVS Revision Info:
   %    $Author: gaser $
-  %    $Date: 2017-01-13 11:01:32 +0100 (Fr, 13 Jan 2017) $
-  %    $Revision: 1103 $
+  %    $Date: 2021-10-12 15:49:25 +0200 (Tue, 12 Oct 2021) $
+  %    $Revision: 1888 $
   %
   % Copyright ?? 2011 The General Hospital Corporation (Boston, MA) "MGH"
   %
@@ -336,26 +410,15 @@ function [vertex_coords, faces] = read_surf(fname)
   %
 
 
-  %fid = fopen(fname, 'r') ;
-  %nvertices = fscanf(fid, '%d', 1);
-  %all = fscanf(fid, '%d %f %f %f %f\n', [5, nvertices]) ;
-  %curv = all(5, :)' ;
-
-  % open it as a big-endian file
-
-
-  %QUAD_FILE_MAGIC_NUMBER =  (-1 & 0x00ffffff) ;
-  %NEW_QUAD_FILE_MAGIC_NUMBER =  (-3 & 0x00ffffff) ;
-
   TRIANGLE_FILE_MAGIC_NUMBER  =  16777214 ;
   QUAD_FILE_MAGIC_NUMBER      =  16777215 ;
 
-  if ~exist(fname,'file')
-    error('MATLAB:cat_io_FreeSurfer:read_surf','mesh file %s does not exist.', fname) ;
+  if ~exist(filename,'file')
+    error('MATLAB:cat_io_FreeSurfer:read_surf','mesh file %s does not exist.', filename) ;
   end
-  fid = fopen(fname, 'rb', 'b') ;
+  fid = fopen(filename, 'rb', 'b') ;
   if (fid < 0)
-    error('MATLAB:cat_io_FreeSurfer:read_surf','could not open mesh file %s.', fname) ;
+    error('MATLAB:cat_io_FreeSurfer:read_surf','could not open mesh file %s.', filename) ;
   end
   magic = fread3(fid) ;
 
@@ -379,8 +442,11 @@ function [vertex_coords, faces] = read_surf(fname)
     vertex_coords = fread(fid, vnum*3, 'float32') ; 
     faces = fread(fid, fnum*3, 'int32') ;
     faces = reshape(faces, 3, fnum)' ;
+  else
+    error('MATLAB:cat_io_FreeSurfer:read_surf','mesh file %s contains no surface.', filename) ;
   end
 
+  faces=faces+1; %end
   vertex_coords = reshape(vertex_coords, 3, vnum)' ;
   fclose(fid) ;
 end
@@ -392,8 +458,8 @@ function fwrite3(fid, val)
 % Original Author: Bruce Fischl
 % CVS Revision Info:
 %    $Author: gaser $
-%    $Date: 2017-01-13 11:01:32 +0100 (Fr, 13 Jan 2017) $
-%    $Revision: 1103 $
+%    $Date: 2021-10-12 15:49:25 +0200 (Tue, 12 Oct 2021) $
+%    $Revision: 1888 $
 %
 % Copyright ?? 2011 The General Hospital Corporation (Boston, MA) "MGH"
 %
@@ -405,9 +471,6 @@ function fwrite3(fid, val)
 %
 % Reporting: freesurfer@nmr.mgh.harvard.edu
 %
-
-% write a 3 byte integer out of a file
-%fwrite(fid, val, '3*uchar') ;
   
   b1 = bitand(bitshift(val, -16), 255) ;
   b2 = bitand(bitshift(val, -8), 255) ;
@@ -428,8 +491,8 @@ function [retval] = fread3(fid)
   % Original Author: Bruce Fischl
   % CVS Revision Info:
   %    $Author: gaser $
-  %    $Date: 2017-01-13 11:01:32 +0100 (Fr, 13 Jan 2017) $
-  %    $Revision: 1103 $
+  %    $Date: 2021-10-12 15:49:25 +0200 (Tue, 12 Oct 2021) $
+  %    $Revision: 1888 $
   %
   % Copyright ?? 2011 The General Hospital Corporation (Boston, MA) "MGH"
   %
@@ -449,11 +512,11 @@ function [retval] = fread3(fid)
 
 end
 
-function err = write_wfile(fname, w, v)
-% err = write_wfile(fname, w, <v>)
+function err = write_wfile(filename, w, v)
+% err = write_wfile(filename, w, <v>)
 % 
 % writes a vector into a binary 'w' file
-%  fname - name of file to write to
+%  filename - name of file to write to
 %  w     - vector of values to be written
 %  v     - 0-based vertex numbers 
 %          (assumes 0 to N-1 if not present or empty).
@@ -468,8 +531,8 @@ function err = write_wfile(fname, w, v)
 % Original Author: Doug Greve
 % CVS Revision Info:
 %    $Author: gaser $
-%    $Date: 2017-01-13 11:01:32 +0100 (Fr, 13 Jan 2017) $
-%    $Revision: 1103 $
+%    $Date: 2021-10-12 15:49:25 +0200 (Tue, 12 Oct 2021) $
+%    $Revision: 1888 $
 %
 % Copyright ?? 2011 The General Hospital Corporation (Boston, MA) "MGH"
 %
@@ -486,7 +549,7 @@ function err = write_wfile(fname, w, v)
   err = 1;
 
   if(nargin ~= 2 && nargin ~= 3)
-    fprintf('USAGE: err = write_wfile(fname, w, <v>) \n');
+    fprintf('USAGE: err = write_wfile(filename, w, <v>) \n');
     return;
   end
 
@@ -497,9 +560,9 @@ function err = write_wfile(fname, w, v)
   if (isempty(v)), v = 0:vnum-1; end
 
   % open it as a big-endian file
-  fid = fopen(fname, 'wb', 'b') ;
+  fid = fopen(filename, 'wb', 'b') ;
   if(fid == -1)
-    fprintf('ERROR: could not open %s\n',fname);
+    fprintf('ERROR: could not open %s\n',filename);
     return;
   end
 
@@ -515,13 +578,13 @@ function err = write_wfile(fname, w, v)
   err = 0;
 end
 
-function [curv] = write_curv(fname, curv, fnum)
-% [curv] = write_curv(fname, curv, fnum)
+function [curv] = write_curv(filename, curv, fnum)
+% [curv] = write_curv(filename, curv, fnum)
 %
 % writes a curvature vector into a binary file
-%				fname - name of file to write to
-%				curv  - vector of curvatures
-%				fnum  - # of faces in surface.
+%       filename - name of file to write to
+%       curv  - vector of curvatures
+%       fnum  - # of faces in surface.
 %
 
 
@@ -531,8 +594,8 @@ function [curv] = write_curv(fname, curv, fnum)
 % Original Author: Bruce Fischl
 % CVS Revision Info:
 %    $Author: gaser $
-%    $Date: 2017-01-13 11:01:32 +0100 (Fr, 13 Jan 2017) $
-%    $Revision: 1103 $
+%    $Date: 2021-10-12 15:49:25 +0200 (Tue, 12 Oct 2021) $
+%    $Revision: 1888 $
 %
 % Copyright (C) 2002-2007,
 % The General Hospital Corporation (Boston, MA). 
@@ -547,27 +610,27 @@ function [curv] = write_curv(fname, curv, fnum)
 % Bug reports: analysis-bugs@nmr.mgh.harvard.edu
 %
 
-% assume fixed tetrahedral topology
-if nargin == 2
-  fnum = (length(curv)-2)*2;
+  % assume fixed tetrahedral topology
+  if nargin == 2
+    fnum = (length(curv)-2)*2;
+  end
+  
+  % open it as a big-endian file
+  fid = fopen(filename, 'w', 'b') ;
+  vnum = length(curv) ;
+  NEW_VERSION_MAGIC_NUMBER = 16777215;
+  fwrite3(fid, NEW_VERSION_MAGIC_NUMBER ) ;
+  fwrite(fid, vnum,'int32') ;
+  fwrite(fid, fnum,'int32') ;
+  fwrite(fid, 1, 'int32');
+  fwrite(fid, curv, 'float') ;
+  fclose(fid) ;
+  
 end
 
-% open it as a big-endian file
-fid = fopen(fname, 'w', 'b') ;
-vnum = length(curv) ;
-NEW_VERSION_MAGIC_NUMBER = 16777215;
-fwrite3(fid, NEW_VERSION_MAGIC_NUMBER ) ;
-fwrite(fid, vnum,'int32') ;
-fwrite(fid, fnum,'int32') ;
-fwrite(fid, 1, 'int32');
-fwrite(fid, curv, 'float') ;
-fclose(fid) ;
-
-end
-
-function [curv, fnum] = read_curv(fname)
+function [curv, fnum] = read_curv(filename)
 %
-% [curv, fnum] = read_curv(fname)
+% [curv, fnum] = read_curv(filename)
 % reads a binary curvature file into a vector
 %
 %
@@ -576,8 +639,8 @@ function [curv, fnum] = read_curv(fname)
 % Original Author: Bruce Fischl
 % CVS Revision Info:
 %    $Author: gaser $
-%    $Date: 2017-01-13 11:01:32 +0100 (Fr, 13 Jan 2017) $
-%    $Revision: 1103 $
+%    $Date: 2021-10-12 15:49:25 +0200 (Tue, 12 Oct 2021) $
+%    $Revision: 1888 $
 %
 % Copyright ?? 2011 The General Hospital Corporation (Boston, MA) "MGH"
 %
@@ -591,34 +654,29 @@ function [curv, fnum] = read_curv(fname)
 %
 
 
-%fid = fopen(fname, 'r') ;
-%nvertices = fscanf(fid, '%d', 1);
-%all = fscanf(fid, '%d %f %f %f %f\n', [5, nvertices]) ;
-%curv = all(5, :)' ;
-
-% open it as a big-endian file
-if ~exist(fname,'file')
-  error('cat_io_FreeSurfer:read_curv','Curvature file "%s" does not exist!\n', fname);
-end
-fid = fopen(fname, 'r', 'b') ;
-if (fid < 0)
-	 error('cat_io_FreeSurfer:read_curv','Could not open curvature file "%s"!\n', fname);
-end
-vnum = fread3(fid) ;
-NEW_VERSION_MAGIC_NUMBER = 16777215;
-if (vnum == NEW_VERSION_MAGIC_NUMBER)
-	 vnum = fread(fid, 1, 'int32') ;
-	 fnum = fread(fid, 1, 'int32') ;
-   x    = fread(fid, 1, 'int32') ;
-   curv = fread(fid, vnum, 'float') ; 
-	   	
-  fclose(fid) ;
-else
-
-	fnum = fread3(fid) ;
-  curv = fread(fid, vnum, 'int32') ./ 100 ; 
-  fclose(fid) ;
-end
+  % open it as a big-endian file
+  if ~exist(filename,'file')
+    error('cat_io_FreeSurfer:read_curv','Curvature file "%s" does not exist!\n', filename);
+  end
+  fid = fopen(filename, 'r', 'b') ;
+  if (fid < 0)
+     error('cat_io_FreeSurfer:read_curv','Could not open curvature file "%s"!\n', filename);
+  end
+  vnum = fread3(fid) ;
+  NEW_VERSION_MAGIC_NUMBER = 16777215;
+  if (vnum == NEW_VERSION_MAGIC_NUMBER)
+     vnum = fread(fid, 1, 'int32') ;
+     fnum = fread(fid, 1, 'int32') ;
+     x    = fread(fid, 1, 'int32') ;
+     curv = fread(fid, vnum, 'float') ; 
+        
+    fclose(fid) ;
+  else
+  
+    fnum = fread3(fid) ;
+    curv = fread(fid, vnum, 'int32') ./ 100 ; 
+    fclose(fid) ;
+  end
 
 end
 
@@ -744,31 +802,19 @@ function write_annotation(filename, vertices, label, ct)
           error('write_annotation: Unable to write structure name!!');
       end
 
-      count = fwrite(fp, int32(ct.table(i, 1)), 'int');
-      if(count~=1)
-         error('write_annotation: Unable to write red color'); 
+      for j=1:4
+          count = fwrite(fp, int32(ct.table(i, j)), 'int');
+          if(count~=1)
+             error('write_annotation: Unable to write red color'); 
+          end
       end
-
-      count = fwrite(fp, int32(ct.table(i, 2)), 'int');
-      if(count~=1)
-         error('write_annotation: Unable to write blue color'); 
-      end
-
-      count = fwrite(fp, int32(ct.table(i, 3)), 'int');
-      if(count~=1)
-         error('write_annotation: Unable to write green color'); 
-      end
-
-      count = fwrite(fp, int32(ct.table(i, 4)), 'int');
-      if(count~=1)
-         error('write_annotation: Unable to write padded color'); 
-      end 
-
+      
   end
 
   fclose(fp);
 end
-function [vertices, label, colortable] = Read_Brain_Annotation(filename, varargin)
+
+function [vertices, label, colortable] = read_annotation(filename, varargin)
 %
 % NAME
 %
@@ -834,8 +880,8 @@ function [vertices, label, colortable] = Read_Brain_Annotation(filename, varargi
 % Original Author: Bruce Fischl
 % CVS Revision Info:
 %    $Author: gaser $
-%    $Date: 2017-01-13 11:01:32 +0100 (Fr, 13 Jan 2017) $
-%    $Revision: 1103 $
+%    $Date: 2021-10-12 15:49:25 +0200 (Tue, 12 Oct 2021) $
+%    $Revision: 1888 $
 %
 % Copyright ?? 2011 The General Hospital Corporation (Boston, MA) "MGH"
 %
@@ -848,107 +894,107 @@ function [vertices, label, colortable] = Read_Brain_Annotation(filename, varargi
 % Reporting: freesurfer@nmr.mgh.harvard.edu
 %
 
-fp = fopen(filename, 'r', 'b');
-
-verbosity = 0;
-if ~isempty(varargin)
-    verbosity       = varargin{1};  
-end;
-
-if(fp < 0)
-   if verbosity, disp('Annotation file cannot be opened'); end;
-   return;
-end
-
-A = fread(fp, 1, 'int');
-
-tmp = fread(fp, 2*A, 'int');
-vertices = tmp(1:2:end);
-label = tmp(2:2:end);
-
-bool = fread(fp, 1, 'int');
-if(isempty(bool)) %means no colortable
-   if verbosity, disp('No Colortable found.'); end;
-   colortable = struct([]);
-   fclose(fp);
-   return; 
-end
-
-if(bool)
-    
-    %Read colortable
-    numEntries = fread(fp, 1, 'int');
-
-    if(numEntries > 0)
-        
-        if verbosity, disp('Reading from Original Version'); end;
-        colortable.numEntries = numEntries;
-        len = fread(fp, 1, 'int');
-        colortable.orig_tab = fread(fp, len, '*char')';
-        colortable.orig_tab = colortable.orig_tab(1:end-1);
-
-        colortable.struct_names = cell(numEntries,1);
-        colortable.table = zeros(numEntries,5);
-        for i = 1:numEntries
-            len = fread(fp, 1, 'int');
-            colortable.struct_names{i} = fread(fp, len, '*char')';
-            colortable.struct_names{i} = colortable.struct_names{i}(1:end-1);
-            colortable.table(i,1) = fread(fp, 1, 'int');
-            colortable.table(i,2) = fread(fp, 1, 'int');
-            colortable.table(i,3) = fread(fp, 1, 'int');
-            colortable.table(i,4) = fread(fp, 1, 'int');
-            colortable.table(i,5) = colortable.table(i,1) + colortable.table(i,2)*2^8 + colortable.table(i,3)*2^16 + colortable.table(i,4)*2^24;
-        end
-        if verbosity
-            disp(['colortable with ' num2str(colortable.numEntries) ' entries read (originally ' colortable.orig_tab ')']);
-        end
-    else
-        version = -numEntries;
-        if verbosity
-          if(version~=2)    
-            disp(['Error! Does not handle version ' num2str(version)]);
-          else
-            disp(['Reading from version ' num2str(version)]);
+  fp = fopen(filename, 'r', 'b');
+  
+  verbosity = 0;
+  if ~isempty(varargin)
+      verbosity       = varargin{1};  
+  end;
+  
+  if(fp < 0)
+     if verbosity, disp('Annotation file cannot be opened'); end;
+     return;
+  end
+  
+  A = fread(fp, 1, 'int');
+  
+  tmp = fread(fp, 2*A, 'int');
+  vertices = tmp(1:2:end);
+  label = tmp(2:2:end);
+  
+  bool = fread(fp, 1, 'int');
+  if(isempty(bool)) %means no colortable
+     if verbosity, disp('No Colortable found.'); end;
+     colortable = struct([]);
+     fclose(fp);
+     return; 
+  end
+  
+  if(bool)
+      
+      %Read colortable
+      numEntries = fread(fp, 1, 'int');
+  
+      if(numEntries > 0)
+          
+          if verbosity, disp('Reading from Original Version'); end;
+          colortable.numEntries = numEntries;
+          len = fread(fp, 1, 'int');
+          colortable.orig_tab = fread(fp, len, '*char')';
+          colortable.orig_tab = colortable.orig_tab(1:end-1);
+  
+          colortable.struct_names = cell(numEntries,1);
+          colortable.table = zeros(numEntries,5);
+          for i = 1:numEntries
+              len = fread(fp, 1, 'int');
+              colortable.struct_names{i} = fread(fp, len, '*char')';
+              colortable.struct_names{i} = colortable.struct_names{i}(1:end-1);
+              colortable.table(i,1) = fread(fp, 1, 'int');
+              colortable.table(i,2) = fread(fp, 1, 'int');
+              colortable.table(i,3) = fread(fp, 1, 'int');
+              colortable.table(i,4) = fread(fp, 1, 'int');
+              colortable.table(i,5) = colortable.table(i,1) + colortable.table(i,2)*2^8 + colortable.table(i,3)*2^16 + colortable.table(i,4)*2^24;
           end
-        end
-        numEntries = fread(fp, 1, 'int');
-        colortable.numEntries = numEntries;
-        len = fread(fp, 1, 'int');
-        colortable.orig_tab = fread(fp, len, '*char')';
-        colortable.orig_tab = colortable.orig_tab(1:end-1);
-        
-        colortable.struct_names = cell(numEntries,1);
-        colortable.table = zeros(numEntries,5);
-        
-        numEntriesToRead = fread(fp, 1, 'int');
-        for i = 1:numEntriesToRead
-            structure = fread(fp, 1, 'int')+1;
-            if (structure < 0)
-              if verbosity, disp(['Error! Read entry, index ' num2str(structure)]); end;
+          if verbosity
+              disp(['colortable with ' num2str(colortable.numEntries) ' entries read (originally ' colortable.orig_tab ')']);
+          end
+      else
+          version = -numEntries;
+          if verbosity
+            if(version~=2)    
+              disp(['Error! Does not handle version ' num2str(version)]);
+            else
+              disp(['Reading from version ' num2str(version)]);
             end
-            if(~isempty(colortable.struct_names{structure}))
-              if verbosity, disp(['Error! Duplicate Structure ' num2str(structure)]); end;
-            end
-            len = fread(fp, 1, 'int');
-            colortable.struct_names{structure} = fread(fp, len, '*char')';
-            colortable.struct_names{structure} = colortable.struct_names{structure}(1:end-1);
-            colortable.table(structure,1) = fread(fp, 1, 'int');
-            colortable.table(structure,2) = fread(fp, 1, 'int');
-            colortable.table(structure,3) = fread(fp, 1, 'int');
-            colortable.table(structure,4) = fread(fp, 1, 'int');
-            colortable.table(structure,5) = colortable.table(structure,1) + colortable.table(structure,2)*2^8 + colortable.table(structure,3)*2^16 + colortable.table(structure,4)*2^24;       
-        end
-        if verbosity 
-          disp(['colortable with ' num2str(colortable.numEntries) ' entries read (originally ' colortable.orig_tab ')']);
-        end
-    end    
-else
-    if verbosity
-        disp('Error! Should not be expecting bool = 0');    
-    end;
-end
-
-fclose(fp);
+          end
+          numEntries = fread(fp, 1, 'int');
+          colortable.numEntries = numEntries;
+          len = fread(fp, 1, 'int');
+          colortable.orig_tab = fread(fp, len, '*char')';
+          colortable.orig_tab = colortable.orig_tab(1:end-1);
+          
+          colortable.struct_names = cell(numEntries,1);
+          colortable.table = zeros(numEntries,5);
+          
+          numEntriesToRead = fread(fp, 1, 'int');
+          for i = 1:numEntriesToRead
+              structure = fread(fp, 1, 'int')+1;
+              if (structure < 0)
+                if verbosity, disp(['Error! Read entry, index ' num2str(structure)]); end;
+              end
+              if(~isempty(colortable.struct_names{structure}))
+                if verbosity, disp(['Error! Duplicate Structure ' num2str(structure)]); end;
+              end
+              len = fread(fp, 1, 'int');
+              colortable.struct_names{structure} = fread(fp, len, '*char')';
+              colortable.struct_names{structure} = colortable.struct_names{structure}(1:end-1);
+              colortable.table(structure,1) = fread(fp, 1, 'int');
+              colortable.table(structure,2) = fread(fp, 1, 'int');
+              colortable.table(structure,3) = fread(fp, 1, 'int');
+              colortable.table(structure,4) = fread(fp, 1, 'int');
+              colortable.table(structure,5) = colortable.table(structure,1) + colortable.table(structure,2)*2^8 + colortable.table(structure,3)*2^16 + colortable.table(structure,4)*2^24;       
+          end
+          if verbosity 
+            disp(['colortable with ' num2str(colortable.numEntries) ' entries read (originally ' colortable.orig_tab ')']);
+          end
+      end    
+  else
+      if verbosity
+          disp('Error! Should not be expecting bool = 0');    
+      end;
+  end
+  
+  fclose(fp);
 
 
 end

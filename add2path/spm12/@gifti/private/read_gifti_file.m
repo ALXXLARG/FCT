@@ -7,14 +7,15 @@ function this = read_gifti_file(filename, this)
 % Copyright (C) 2008 Wellcome Trust Centre for Neuroimaging
 
 % Guillaume Flandin
-% $Id: read_gifti_file.m 6895 2016-10-03 11:08:49Z guillaume $
+% $Id: read_gifti_file.m 7632 2019-07-03 09:05:24Z guillaume $
 
 % Import XML-based GIfTI file
 %--------------------------------------------------------------------------
 try
     t = xmltree(filename);
 catch
-    error('[GIFTI] Loading of XML file %s failed.', filename);
+    warning('[GIFTI] Parsing of XML file %s failed.', filename);
+    rethrow(lasterror);
 end
 
 % Root element of a GIFTI file
@@ -119,7 +120,12 @@ for i=1:length(c)
         case 'CoordinateSystemTransformMatrix'
             s(1).space(end+1) = gifti_Space(t,c(i));
         case 'Data'
-            s(1).data         = gifti_Data(t,c(i),s(1).attributes);
+            if isfield(s(1).attributes,'Dim') && isequal(s(1).attributes.Dim,[0 0])
+                warning('Ignoring empty DataArray');
+                s(1).data     = [];
+            else
+                s(1).data     = gifti_Data(t,c(i),s(1).attributes);
+            end
         otherwise
             error('[GIFTI] Unknown DataArray element "%s".',get(t,c(i),'name'));
     end
@@ -155,8 +161,8 @@ end
 [unused,unused,mach] = fopen(1);
 sb = @(x) x;
 try
-    if (strcmp(s.Endian,'LittleEndian') && ~isempty(strmatch('ieee-be',mach))) ...
-        || (strcmp(s.Endian,'BigEndian') && ~isempty(strmatch('ieee-le',mach)))
+    if (strcmp(s.Endian,'LittleEndian') && strncmp('ieee-be',mach,7)) ...
+        || (strcmp(s.Endian,'BigEndian') && strncmp('ieee-le',mach,7))
         sb = @swapbyte;
     end
 catch
@@ -198,7 +204,12 @@ end
 if length(s.Dim) == 1, s.Dim(end+1) = 1; end
 switch s.ArrayIndexingOrder
     case 'RowMajorOrder'
-        d = permute(reshape(d,fliplr(s.Dim)),length(s.Dim):-1:1);
+        if length(s.Dim) == 2 && any(s.Dim==1)
+            % special case that does not require permuting
+            d = reshape(d,s.Dim);
+        else
+            d = permute(reshape(d,fliplr(s.Dim)),length(s.Dim):-1:1);
+        end
     case 'ColumnMajorOrder'
         d = reshape(d,s.Dim);
     otherwise

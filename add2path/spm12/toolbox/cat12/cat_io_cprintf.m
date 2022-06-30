@@ -138,7 +138,15 @@ function count = cat_io_cprintf(style,format,varargin)
 % referenced and attributed as such. The original author maintains the right to be solely associated with this work.
 
 % Programmed and Copyright by Yair M. Altman: altmany(at)gmail.com
-% $Revision: 1118 $  $Date: 2017-03-17 16:57:00 +0100 (Fr, 17 Mär 2017) $
+% $Revision: 1791 $  $Date: 2021-04-06 11:15:54 +0200 (Di, 06 Apr 2021) $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_io_cprintf.m 1791 2021-04-06 09:15:54Z gaser $
   
   global cprintferror; 
   if isempty(cprintferror), cprintferror=0; end
@@ -153,6 +161,7 @@ function count = cat_io_cprintf(style,format,varargin)
   end
 
   if cprintferror
+    warning off
     count1 = fprintf(format,varargin{:});
     if nargout
         count = count1;
@@ -175,29 +184,31 @@ function count = cat_io_cprintf(style,format,varargin)
 
       % The following is for debug use only:
       %global docElement txt el
-      if ~exist('el','var') || isempty(el),  el=handle([]);  end  %#ok mlint short-circuit error ("used before defined")
+      try, if ~exist('el','var') || isempty(el),  el=handle([]);  end; end %#ok mlint short-circuit error ("used before defined")
       if nargin<1, showDemo(majorVersion,minorVersion); return;  end
       %if isempty(style),  return;  end
       if isempty(style), style='text'; end
       if ischar(style)
         switch lower(style)
-          case {'t','txt','text','k'}, style=[0.0 0.0 0.0];
-          case {'e','err','error'},    style=[0.8 0.0 0.0];
-          case {'w','warn','warning'}, style=[1.0 0.5 0.0];
-          case {'com','comment'},      style=[0.0 0.0 0.8];
-          case {'g','green'},          style=[0.0 1.0 0.0];
-          case {'b','blue'},           style=[0.0 0.0 1.0];
-          case {'r','red'},            style=[1.0 0.0 0.0];
-          case {'c','cyan'},           style=[0.0 1.0 1.0];
-          case {'m','magenta'},        style=[1.0 1.0 0.0];
-          case {'y','yellow'},         style=[1.0 0.0 1.0];
-          case {'o','orange'},         style=[1.0 0.5 0.0];
-          case {'g9','gray9'},         style=[0.1 0.1 0.1];
-          case {'g8','gray8'},         style=[0.2 0.2 0.2];
-          case {'g7','gray7'},         style=[0.3 0.3 0.3];
-          case {'g6','gray6'},         style=[0.3 0.4 0.4];
-          case {'g5','gray5'},         style=[0.5 0.5 0.5];
-          otherwise,                   style=[0 0 0];
+          case {'t','txt','text','k'},    style=[0.0 0.0 0.0];
+          case {'e','err','error'},       style=[0.8 0.0 0.0];
+          case {'w','warn','warning'},    style=[1.0 0.3 0.0];
+          case {'com','comment'},         style=[0.0 0.0 0.8];
+          case {'note'},                  style=[0.0 0.0 1.0];
+          case {'caution'},               style=[0.5 0.0 1.0];
+          case {'g','green'},             style=[0.0 1.0 0.0];
+          case {'b','blue'},              style=[0.0 0.0 1.0];
+          case {'r','red'},               style=[1.0 0.0 0.0];
+          case {'c','cyan'},              style=[0.0 1.0 1.0];
+          case {'m','magenta'},           style=[1.0 0.0 1.0];
+          case {'y','yellow'},            style=[1.0 1.0 0.0];
+          case {'o','orange'},            style=[1.0 0.5 0.0];
+          case {'g9','gray9'},            style=[0.1 0.1 0.1];
+          case {'g8','gray8'},            style=[0.2 0.2 0.2];
+          case {'g7','gray7'},            style=[0.3 0.3 0.3];
+          case {'g6','gray6'},            style=[0.3 0.4 0.4];
+          case {'g5','gray5'},            style=[0.5 0.5 0.5];
+          otherwise,                      style=[0 0 0];
         end
       elseif isnumeric(style)
         if length(style)>3, style=double(style(1:3)); end

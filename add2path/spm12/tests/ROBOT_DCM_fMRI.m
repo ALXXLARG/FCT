@@ -12,14 +12,19 @@ function E = ROBOT_DCM_fMRI
 % DCM.options.P                      % starting estimates for parameters
 % DCM.options.hidden                 % indices of hidden regions
 
-% $Id: ROBOT_DCM_fMRI.m 6360 2015-03-04 19:24:56Z spm $
+% $Id: ROBOT_DCM_fMRI.m 7497 2018-11-24 17:00:25Z karl $
 
 % tests of spatial models: 'ECD', 'LFP' or 'IMG'
 %==========================================================================
 try
-    cd(fullfile(spm('Dir'),'tests','data','fMRI'))
+    cd(fullfile(spm('Dir'),'tests','data','fMRI'));
 catch
-    cd('C:\Users\karl\Documents\SPM\DCM tests')
+    try
+        cd('C:\Users\karl\Documents\SPM\DCM tests');
+        
+    catch
+        cd('C:\home\spm\DCM\DCM tests');
+    end
 end
 close all
 delete(get(0,'Children'))
@@ -30,7 +35,7 @@ clc
 E = {};
 
 
-% spatial models
+% time-series models
 %==========================================================================
 load DCM_attention
 DCM.options.two_state  = 0;        % two regional populations (E and I)
@@ -110,6 +115,33 @@ subplot(2,2,4)
 bar(B(find(B(:,1)),:))
 title('MAP estimates (B)','FontSize',16)
 axis square
+
+% spectral models
+%==========================================================================
+load DCM_attention
+DCM.options.two_state  = 0;        % two regional populations (E and I)
+DCM.options.stochastic = 0;        % fluctuations on hidden states
+DCM.options.nonlinear  = 0;        % interactions among hidden states
+DCM.options.centre     = 1;        % mean-centre inputs
+DCM.options.induced    = 1;        % indices of hidden regions
+
+DCM.name = 'DCM_CSD';
+DCM = rmfield(DCM,'M');
+DCM = spm_dcm_fmri_csd(DCM)
+
+% print graphics
+%--------------------------------------------------------------------------
+spm_demo_print
+fprintf('\n\n     --------***--------   \n\n')
+
+% Bayesian model reduction
+%--------------------------------------------------------------------------
+spm_dcm_bmr(DCM)
+
+% print graphics
+%--------------------------------------------------------------------------
+spm_demo_print
+fprintf('\n\n     --------***--------   \n\n')
 
 
 % print graphics and save

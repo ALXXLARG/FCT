@@ -1,8 +1,17 @@
-#include "genus0.h"
+/* ______________________________________________________________________
+ *
+ * Christian Gaser, Robert Dahnke
+ * Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+ * Departments of Neurology and Psychiatry
+ * Jena University Hospital
+ * ______________________________________________________________________
+ * $Id: genus0.c 1791 2021-04-06 09:15:54Z gaser $
+ */
 
-#ifdef MATLAB_MEX_FILE
+#include "genus0.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <mex.h> 
-#endif
 
 static int verbose,invconnectivity, connectivity, autocrop[3][2];
 static int img_horiz,img_vert,img_depth,paddeddims[3];
@@ -17,8 +26,8 @@ static void **calloc_list=NULL;
 static unsigned char *zpic;
 static float voxelsize[3],*fzpic,fzpicmax;
 
-static size_t *g_axis_len, *g_stride;
-static size_t paddeddims0[3];
+static mwSize *g_axis_len, *g_stride;
+static mwSize paddeddims0[3];
 static float *g_deltax, *g_tmp, *g_tmp_row, **g_j, *g_x, **g_recip, **g_square;
  
 static void print_msg(char * msg)
@@ -26,7 +35,7 @@ static void print_msg(char * msg)
   printf("%s",msg); 
   }
 
-static void *basic_calloc(size_t nelem, size_t elsize)
+static void *basic_calloc(mwSize nelem, mwSize elsize)
   {
   return(calloc(nelem,elsize));
   }
@@ -82,7 +91,7 @@ static void error_msg(char * msg, int line)
   Gfree_all(0);
   }
 
-static void *Gcalloc(size_t nelem, size_t elsize, int make_persist)
+static void *Gcalloc(mwSize nelem, mwSize elsize, int make_persist)
   {
   void **cl;
   int *p,j;
@@ -224,7 +233,7 @@ static void calc_elist(void)
  
 static void process_row(int axis,float *start)
   {
-  register size_t len;
+  register mwSize len;
   register float *p, *p2, *p3, *p_end, pv, p2v, **jp, **j2p, **j_end, *x2p;
   register float x, x0, x2, *recip, *square, dx;
 
@@ -286,7 +295,7 @@ static void process_row(int axis,float *start)
 
 static void recursive_add_dist_squared(int axis,float *start)
   {
-  size_t len;
+  mwSize len;
   float *p, *p_end, *p2, *p2_end, *p3;
 
   if (axis == 0) {
@@ -327,14 +336,14 @@ static void recursive_add_dist_squared(int axis,float *start)
 
 static int dist_squared(
      int rank,
-     size_t *axis_len,
+     mwSize *axis_len,
      float *deltax,
      register char *inimage,
      register char inobject,
      float *outdist_squared)
   {
-  size_t max_axis_len, data_len;
-  register size_t len;
+  mwSize max_axis_len, data_len;
+  register mwSize len;
   register float *p, *p2, ftmp, ftmp2;
   int i;
 
@@ -345,7 +354,7 @@ static int dist_squared(
     return 0;
   }
 
-  g_stride = (size_t *)Gcalloc(rank,sizeof(size_t),0);
+  g_stride = (mwSize *)Gcalloc(rank,sizeof(mwSize),0);
   if (g_stride==NULL) {error_msg("Memory error.\n",__LINE__);return(1);}
 
   max_axis_len = 2;
@@ -710,9 +719,9 @@ static int set_up(genus0parameters * g0)
     if ((fzpic=(float *)Gcalloc(totlen,sizeof(float),0))==NULL)
       {error_msg("Memory error.\n",__LINE__);return(1);}
 
-    paddeddims[0]=img_horiz; paddeddims[1]=img_vert; paddeddims[2]=img_depth;
-
+    paddeddims[0] =img_horiz; paddeddims[1] =img_vert; paddeddims[2] =img_depth;
     paddeddims0[0]=img_horiz; paddeddims0[1]=img_vert; paddeddims0[2]=img_depth;
+
     /* calculate distance transform */
     /* sets fzpic to dist from {zpic=(1-cut_loops)} */
     if (dist_squared(3,paddeddims0,voxelsize,(char*)zpic,(char)(1-g0->cut_loops),fzpic))
@@ -1000,8 +1009,13 @@ static void find_component(int level)
               {
               qqpni=qqp+nbrs0[i]; /* for each nbr */
               if (status[qqpni]>10) /* if part of a component */
+                {
                 if (truecmvx(qqpni)!=nc) /* if not the same component as qqp */
-                  cm[status[qqpni]]=status[qqpni]=nc;
+                  {
+                  cm[status[qqpni]]=nc;
+                  status[qqpni]=nc;
+                  }
+                }
               }
             }
           /* add nbrs to que, if level ok, etc. */
@@ -1375,7 +1389,7 @@ static int big_component(int * Tris, float * Verts, int * Vert_count, int * Tri_
 static int save_image(genus0parameters * g0)
   {
   int i,j,k,totlen,h,h1,sti;
-  int *pad,dims[3],origlen,vo[3],v2[3],pos[3];
+  int *pad,dims[3],origlen,vo[3],pos[3];
   char msg[200];
   unsigned short *output,zp;
   float *m,*verts,hv[3];
@@ -1439,7 +1453,6 @@ static int save_image(genus0parameters * g0)
       }
     }
   vo[0]=0; vo[1]=g0->vert_count; vo[2]=(g0->vert_count)*2;
-  v2[0]=1; v2[1]=dims[0]; v2[2]=dims[0]*dims[1];
   verts=g0->vertices;
 
   if (g0->return_adjusted_label_map) /* they want a new label map back */

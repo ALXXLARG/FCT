@@ -25,7 +25,14 @@ function varargout = cat_get_defaults(defstr, varargin)
 
 % based on Volkmar Glauches version of
 % spm_get_defaults
-% $Id: cat_get_defaults.m 964 2016-07-20 13:42:29Z dahnke $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_get_defaults.m 1791 2021-04-06 09:15:54Z gaser $
 
 global cat;
 if isempty(cat)
@@ -43,9 +50,17 @@ subs = struct('type','.','subs',tags{1}');
 
 if nargin == 1
     % default output
-    varargout{1} = subsref(cat, subs);
+    try
+      varargout{1} = subsref(cat, subs);
+    catch
+      varargout{1} = []; 
+    end
     return;
 elseif nargin == 2
+  if iscell( varargin{1} )
+    % add an new entry
+    cat = subsasgn(cat, subs, varargin{1});
+  else
     switch varargin{1}
         case 'rmfield'
           % remove the last field of the given defstr
@@ -54,16 +69,17 @@ elseif nargin == 2
                 mainfield = [mainfield '.' tags{1}{ti}]; %#ok<AGROW>
             end
             subfield  = tags{1}{end};  
-            fprintf('Remove field "%s" in "cat.%s"!\n',subfield,mainfield);
+            %fprintf('Remove field "%s" in "cat.%s"!\n',subfield,mainfield);
             eval(sprintf('cat.%s = rmfield(cat.%s,subfield);',mainfield,mainfield));
         case 'rmentry'
           % removes the complete entry of the given defstr
-            fprintf('Remove entry "%s" "cat"!\n',tags{1}{1});
+            %fprintf('Remove entry "%s" "cat"!\n',tags{1}{1});
             cat = rmfield(cat,defstr); 
         otherwise
           % add an new entry
             cat = subsasgn(cat, subs, varargin{1});
     end
+  end
 end
 if nargout == 1
   % output in case changes in cat

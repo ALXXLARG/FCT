@@ -3,11 +3,16 @@ function cat_debug
 %
 % FORMAT cat_debug
 %
-%__________________________________________________________________________
-% Christian Gaser
-% $Id: cat_debug.m 766 2015-11-17 15:05:32Z gaser $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_debug.m 1791 2021-04-06 09:15:54Z gaser $
 
-rev = '$Rev: 766 $';
+rev = '$Rev: 1791 $';
 
 % print last error
 fprintf('\nLast error message:\n');

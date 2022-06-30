@@ -20,9 +20,9 @@ function MDP = DEM_demo_MDP_search
 %
 % This demonstration uses a factorised version of the MDP scheme. In
 % other words, we assume a mean field approximation to the posterior over
-% different hidden states (context, location, scene reflection) – and over
+% different hidden states (context, location, scene reflection) - and over
 % multiple modalities (what versus where).  This provides a parsimonious
-% representation of posterior beliefs over hidden states – but does induce
+% representation of posterior beliefs over hidden states - but does induce
 % degree of overconfidence associated with approximate Bayesian inference.
 %
 % see also: DEM_demo_MDP_habits.m and spm_MPD_VB_X.m
@@ -30,7 +30,7 @@ function MDP = DEM_demo_MDP_search
 % Copyright (C) 2005 Wellcome Trust Centre for Neuroimaging
  
 % Karl Friston
-% $Id: DEM_demo_MDP_search.m 6848 2016-07-30 10:36:29Z karl $
+% $Id: DEM_demo_MDP_search.m 7679 2019-10-24 15:54:07Z spm $
  
 % set up and preliminaries
 %==========================================================================
@@ -155,9 +155,7 @@ C{1}      = zeros(No(1),T);
 C{2}      = zeros(No(2),T);
 C{1}(5,:) =  2;                 % the agent expects to be right
 C{1}(6,:) = -4;                 % and not wrong
-
-% C{2}      = zeros(8,6);       % priors for a speedy reaction time
-% C{2}(1:5,4:end) = -4;         % make tardy sampling costly
+C{2}(1:5,5:end) = -4;           % make tardy sampling costly
 
 
 % MDP Structure - this will be used to generate arrays for multiple trials
@@ -173,8 +171,6 @@ mdp.o = [1 1]';                 % initial outcome
 
 mdp.Aname = {'what','where'};
 mdp.Bname = {'what','where','flip','flip'};
-mdp.temp  = 2;
-mdp.alpha = 128;
  
 % illustrate a single trial
 %==========================================================================
@@ -203,7 +199,7 @@ return
 % illustrate a sequence of trials
 %==========================================================================
  
-% true initial states – with context change at trial 12
+% true initial states - with context change at trial 12
 %--------------------------------------------------------------------------
 clear MDP
 N      = 32;
@@ -526,7 +522,7 @@ for k = 1:Ne
     for j = 1:k
         X(j,:) = x(MDP.o(2,j),:);
     end
-    plot(X(:,1),X(:,2),'b.','MarkerSize',8)
+    plot(X(:,1),X(:,2),'b.','MarkerSize',16)
     
     % save
     %------------------------------------------------------------------

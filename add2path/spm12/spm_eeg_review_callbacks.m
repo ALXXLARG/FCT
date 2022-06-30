@@ -4,7 +4,7 @@ function [varargout] = spm_eeg_review_callbacks(varargin)
 % Copyright (C) 2008 Wellcome Trust Centre for Neuroimaging
 
 % Jean Daunizeau
-% $Id: spm_eeg_review_callbacks.m 6437 2015-05-14 12:27:21Z vladimir $
+% $Id: spm_eeg_review_callbacks.m 7269 2018-02-28 15:53:43Z vladimir $
 
 spm('pointer','watch');
 drawnow expose
@@ -42,7 +42,7 @@ switch varargin{1}
                 visuSensors             = varargin{3};
                 VIZU.visuSensors        = visuSensors;
                 VIZU.montage.clab       = chanlabels(D,visuSensors);
-                if strcmp(transformtype(D),'time')
+                if strcmp(transformtype(D),'time') || D.nsamples==1
                     M                       = sparse(length(visuSensors),D.nchannels);
                     M(sub2ind(size(M),1:length(visuSensors),visuSensors(:)')) = 1;
                     nts                     = min([2e2,D.nsamples]);
@@ -190,9 +190,7 @@ switch varargin{1}
                         case 'epoched'
                             trN = D.PSD.trials.current(1);
                             in.trN = trN;
-                    end
-                    in.gridTime = (1:D.nsamples).*1e3./D.fsample + D.timeonset.*1e3;
-                    in.unit = 'ms';
+                    end                  
                     in.x = x;
                     in.handles = handles;
                     switch D.PSD.VIZU.modality
@@ -213,13 +211,25 @@ switch varargin{1}
                             in.type = 'other';
                     end
                     I = intersect(I,find(~[D.badchannels(1:D.nchannels)]));
+                    
+                    if isequal(D.transformtype, 'time')
+                        in.gridTime = time(D, 1:D.nsamples, 'ms');
+                        in.unit = 'ms';
+                    else
+                        in.gridTime = D.frequencies;
+                        in.unit = 'Hz';
+                    end
                     try %CP
                         pos = coor2D(D,I)';
                         labels = char(chanlabels(D,I));
-                        y = D(I,:,trN);
+                        if isequal(D.transformtype, 'time')
+                            y = D(I,:,trN);                          
+                        else
+                            y = spm_squeeze(D(I,:, 1,trN), 3);
+                        end
+                        in.ind = I;                        
                         in.min = min(y(:));
                         in.max = max(y(:));
-                        in.ind = I;
                         y = y(:,x);
                         spm_eeg_plotScalpData(y,pos,labels,in);
                         try
@@ -677,12 +687,15 @@ switch varargin{1}
                 else
                     Events(Nevents+1).value = 0;
                 end
+                
+                [dum, ind] = sort([Events.time]);
+                
                 D = events(D,1,Events);
                 % Enable tools on selections
                 set(handles.BUTTONS.sb2,'enable','on');
                 set(handles.BUTTONS.sb3,'enable','on');
                 % Update display
-                updateDisp(D,2,Nevents+1)
+                updateDisp(D,2,find(ind==(Nevents+1)));
                 
                 
             %% scroll through data upto next event
@@ -705,6 +718,7 @@ switch varargin{1}
                     end
                     xlim0               = get(handles.axes,'xlim');
                     if ~isequal(xlim0,[1 D.nsamples])
+                        length_window = round(xlim0(2)-xlim0(1));
                         if offset < round(0.5*length_window)
                             offset      = round(0.5*length_window);
                             set(handles.BUTTONS.slider_step,'value',1);
@@ -843,6 +857,7 @@ if ~strcmp(D.PSD.VIZU.modality,'source')
                     Nevents = length(Events);
                     x1 = {Events(:).type}';
                     x2 = {Events(:).value}';
+                    x1(cellfun(@isempty, x1)) = {''};
                     x2(cellfun(@isempty, x2)) = {nan};
                     if ~iscellstr(x1)
                         [y1,i1,j1] = unique(cell2mat(x1));
@@ -1152,7 +1167,12 @@ if ~strcmp(D.PSD.VIZU.modality,'source')
                     else
                         color = 0.75*[1 1 1];
                     end
-                    datai = squeeze(D(VIZU.visuSensors(i),:,:,trN(1)));
+                    
+                    if D.nsamples==1
+                        datai = squeeze(D(VIZU.visuSensors(i),:,:,trN));                        
+                    else
+                        datai = squeeze(D(VIZU.visuSensors(i),:,:,trN(1))); 
+                    end
                     
                     miY = min(datai(~isnan(datai(:))));
                     maY = max(datai(~isnan(datai(:))));
@@ -1165,14 +1185,30 @@ if ~strcmp(D.PSD.VIZU.modality,'source')
                         maY = maY + maY.*1e-3;
                     end
                     
-                    if any(size(datai)==1)
-                        D.PSD.handles.PLOT.im(i) = plot(datai,...
+                    if D.nsamples == 1
+                        cmenu = uicontextmenu;
+                        uimenu(cmenu,'Label',['channel ',num2str(VIZU.visuSensors(i)),': ',VIZU.montage.clab{i}],...
+                            'callback',@(o,ev) plotScalpData(D,i));
+                        uimenu(cmenu,'Label',['type: ',char(chantype(D,VIZU.visuSensors(i)))]);
+                        uimenu(cmenu,'Label',['bad: ',num2str(badchannels(D,VIZU.visuSensors(i)))],...
+                            'callback',@switchBC,'userdata',i,...
+                            'BusyAction','cancel',...
+                            'Interruptible','off');
+                        status = badchannels(D,VIZU.visuSensors(i));
+                        if ~status
+                            color = [1 1 1];
+                        else
+                            color = 0.75*[1 1 1];
+                        end
+                        set(handles.fra(i),'uicontextmenu',cmenu);
+                        set(handles.axes(i),'color',color,...
+                            'ylim',[miY maY]./VIZU.visu_scale);
+                        
+                        D.PSD.handles.PLOT.im(:,i) = plot(datai,...
                             'parent',handles.axes(i),...
                             'tag','plotEEG',...
                             'userdata',i,...
-                            'hittest','off');
-                        set(handles.axes(i),...
-                            'ylim',[miY maY]);
+                            'hittest','off');                 
                     else
                         D.PSD.handles.PLOT.im(i) = image(datai,...
                             'parent',handles.axes(i),...
@@ -1395,8 +1431,12 @@ switch D.PSD.VIZU.type
     case 2
         set(D.PSD.handles.axes(ind),'Color',color);
         set(D.PSD.handles.fra(ind),'uicontextmenu',cmenu);
-        set(D.PSD.handles.PLOT.p(:,ind),'uicontextmenu',cmenu);
-        axes(D.PSD.handles.scale)
+        if isfield(D.PSD.handles.PLOT, 'p')
+            set(D.PSD.handles.PLOT.p(:,ind),'uicontextmenu',cmenu);
+            axes(D.PSD.handles.scale);
+        else
+            set(D.PSD.handles.PLOT.im(:,ind),'uicontextmenu',cmenu);
+        end        
 end
 
 d1 = rmfield(D,{'PSD'});
@@ -1600,62 +1640,45 @@ end
 
 
 if length(cn) == 5  % channel info
-    if ~emptyTable
+    if ~emptyTable 
         nc = D.nchannels;
-        for i=1:nc
-            if ~isempty(table(i,1))
-                D = chanlabels(D,i,table(i,1));
-            end
-            if ~isempty(table(i,2))
-                switch lower(table(i,2))
-                    case 'eeg'
-                        D = chantype(D,i,'EEG');
-                    case 'meg'
-                        D = chantype(D,i,'MEG');
-                    case 'megplanar'
-                        D = chantype(D,i,'MEGPLANAR');
-                    case 'megcomb'
-                        D = chantype(D,i,'MEGCOMB');
-                    case 'megmag'
-                        D = chantype(D,i,'MEGMAG');
-                    case 'meggrad'
-                        D = chantype(D,i,'MEGGRAD');
-                    case 'refmag'
-                        D = chantype(D,i,'REFMAG');
-                    case 'refgrad'
-                        D = chantype(D,i,'REFGRAD');
-                    case 'lfp'
-                        D = chantype(D,i,'LFP');
-                    case 'eog'
-                        D = chantype(D,i,'EOG');
-                    case 'veog'
-                        D = chantype(D,i,'VEOG');
-                    case 'heog'
-                        D = chantype(D,i,'HEOG');
-                    case 'phys'
-                        D = chantype(D,i,'PHYS');
-                    case 'ilam'
-                        D = chantype(D,i,'ILAM');
-                    case 'src'
-                        D = chantype(D,i,'SRC'); 
-                    case 'other'
-                        D = chantype(D,i,'Other');
-                    otherwise
-                        D = chantype(D,i,'Other');
-                end
-            end
-            if ~isempty(table(i,3))
-                switch lower(table(i,3))
-                    case 'yes'
-                        D = badchannels(D,i,1);
-                    otherwise
-                        D = badchannels(D,i,0);
-                end
-            end
-            if ~isempty(table(i,5))
-                D = units(D,i,table(i,5));
-            end
+        
+        if isa(table(:, 1), 'char')
+            newlabels = {table(:, 1)};
+        else
+            newlabels = cell(table(:, 1));
         end
+        
+        valid     = find(~cellfun(@isempty, newlabels));        
+        D = chanlabels(D, valid, newlabels(valid));
+        
+        if isa(table(:, 2), 'char')
+            newtypes = {table(:, 2)};
+        else
+            newtypes  = cell(table(:, 2));
+        end
+        valid     = find(~cellfun(@isempty, newtypes));        
+        D = chantype(D, valid, newtypes(valid));
+            
+        if isa(table(:, 3), 'char')
+            newbad = {table(:, 3)};
+        else
+            newbad    = cell(table(:, 3));
+        end
+        valid     = find(~cellfun(@isempty, newbad));
+        bad       = strmatch('yes', newbad(valid));
+        good      = strmatch('no',  newbad(valid));
+        D = badchannels(D, valid(bad), 1);
+        D = badchannels(D, valid(good), 0);
+        
+        if isa(table(:, 5), 'char')
+            newunits  = {table(:, 5)};
+        else
+            newunits  = cell(table(:, 5));
+        end
+        valid     = find(~cellfun(@isempty, newunits));
+        D = units(D, valid, newunits(valid));        
+        
         % Find indices of channel types (these might have been changed)
         D.PSD.EEG.I  = indchantype(D,'EEG');
         D.PSD.MEG.I  = sort(indchantype(D,'MEG'));
@@ -1736,10 +1759,30 @@ elseif length(cn) == 7
     else
         if ~emptyTable
             nt = D.ntrials;
-            for i=1:nt
-                if ~isempty(table(i,1))
-                    D = conditions(D,i,table(i,1));
-                end
+            
+            if isa(table(:, 1), 'char')
+                newconditions = {table(:, 1)};
+            else
+                newconditions = cell(table(:, 1));
+            end
+            valid     = find(~cellfun(@isempty, newconditions));
+            D = conditions(D, valid, newconditions(valid));
+        
+            if isa(table(:, 6), 'char')
+                newbad    = {table(:, 6)};
+            else
+                newbad    = cell(table(:, 6));
+            end
+            valid     = find(~cellfun(@isempty, newbad));
+            bad       = strmatch('yes', newbad(valid));
+            good      = strmatch('no',  newbad(valid));
+            D = badtrials(D, valid(bad), 1);
+            D = badtrials(D, valid(good), 0);
+                              
+            
+            ind = [];
+            newevents = {};
+            for i=1:nt              
                 Events = events(D,i);
                 Events = [Events{:}];
                 ne = length(Events);
@@ -1750,16 +1793,11 @@ elseif length(cn) == 7
                     if ~isempty(table(i,3))
                         Events.value = table(i,3);%str2double(table(i,3));
                     end
-                    D = events(D,i,Events);
-                end
-                if ~isempty(table(i,6))
-                    switch lower(table(i,6))
-                        case 'yes'
-                            D = badtrials(D,i,1);
-                        otherwise
-                            D = badtrials(D,i,0);
-                    end
-                end
+                    
+                    ind = [ind i];
+                    newevents = [newevents {Events}];                   
+                end                                
+                                              
                 if badtrials(D,i)
                     str = ' (bad)';
                 else
@@ -1768,6 +1806,8 @@ elseif length(cn) == 7
                 D.PSD.trials.TrLabels{i} = ['Trial ',num2str(i),': ', ...
                     char(conditions(D,i)),str];
             end
+            
+            D = events(D,ind,newevents);
         else
         end
     end
@@ -1891,7 +1931,7 @@ if ~~indAxes
     trN = D.PSD.trials.current(:);
     Ntrials = length(trN);
     
-    if strcmp(transformtype(D),'time')
+    if strcmp(transformtype(D),'time') 
         
         leg = cell(Ntrials,1);
         col = lines;
@@ -1919,9 +1959,34 @@ if ~~indAxes
         end
         title(ha2,['channel ',chanLabel,...
             ' (',char(chantype(D,VIZU.visuSensors(indAxes))),')'])
-        
-    else % time-frequency data
-        if D.nsamples>1 % standard TF data, else -> spectrum data
+    elseif D.nsamples == 1 %spectrum
+        leg = cell(Ntrials,1);
+        col = lines;
+        col = repmat(col(1:7,:),floor(Ntrials./7)+1,1);
+        hp = get(handles.axes(indAxes),'children');        
+        freq = D.frequencies;
+        for i=1:Ntrials
+            datai = get(hp(Ntrials-i+1),'ydata')./VIZU.visu_scale;
+            plot(ha2,freq,datai,'color',col(i,:));
+            leg{i} = D.PSD.trials.TrLabels{trN(i)};
+        end
+        legend(leg)
+        set(ha2,'xlim',[min(freq),max(freq)],...
+            'ylim',get(D.PSD.handles.axes(indAxes),'ylim'))
+        xlabel(ha2,'Frequency (Hz)')
+        unit = 'unknown';
+        try
+            unit = units(D,VIZU.visuSensors(indAxes));
+        end
+        if isequal(char(unit),'unknown')
+            ylabel(ha2,'power')
+        else
+            ylabel(ha2,['power (in ',char(unit),')'])
+        end
+        title(ha2,['channel ',chanLabel,...
+            ' (',char(chantype(D,VIZU.visuSensors(indAxes))),')'])
+                      
+    else % time-frequency data        
             datai = squeeze(D(VIZU.visuSensors(indAxes),:,:,trN(1)));
             pst = (0:1/D.fsample:(D.nsamples-1)/D.fsample) + D.timeonset;
             pst = pst*1e3;  % in msec
@@ -1957,20 +2022,7 @@ if ~~indAxes
                 title(ha2,['channel ',chanLabel,...
                     ' (',char(chantype(D,VIZU.visuSensors(indAxes))),')'])
                 caxis(ha2,VIZU.ylim)
-            end
-        else %-> spectrum data
-            datai = squeeze(D(VIZU.visuSensors(indAxes),:,:,trN(1)));
-            pst = D.frequencies;
-            hp2 = plot(datai,...
-                'parent',ha2);
-            set(ha2,'xtick',1:10:length(pst),'xticklabel',pst(1:10:length(pst)),...
-                'xlim',[1 length(pst)]);
-            xlabel(ha2,'frequency in Hz')
-            ylabel(ha2,'power')
-            title(ha2,['channel ',chanLabel,...
-                ' (',char(chantype(D,VIZU.visuSensors(indAxes))),')'])
-        end
-        
+            end               
     end
     
     axes(ha2)

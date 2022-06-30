@@ -12,8 +12,8 @@ function varargout = cat_io_csv(filename,varargin)
 %   C                   = cell with chars and numbers {'Hallo' 'Welt'; 1 2.3}
 %   sheet               = '' - NOT WORKING YET
 %   pos                 = 'A3:B4' - position of the Data
-%   opt.delimiter       = ';'
-%      .komma           = ',' 
+%   opt.delimiter       = ','
+%      .komma           = '.' 
 %      .linedelimiter   = '\n' 
 %      .format          = '%0.4f'
 %
@@ -25,16 +25,17 @@ function varargout = cat_io_csv(filename,varargin)
 % TODO:
 %   * adding of sheets to save different cells in one file
 % ______________________________________________________________________
-% Robert Dahnke 
-% Structural Brain Mapping Group
-% University Jena 
 %
-% $Id: cat_io_csv.m 1017 2016-09-23 05:55:23Z dahnke $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
 % ______________________________________________________________________
+% $Id: cat_io_csv.m 1921 2021-12-13 13:31:32Z dahnke $
 
-  if nargout>0, action='r'; else action='w'; end
-  if ~exist('filename','var'),    
-    filename = spm_select([0 1],'xml','Select *.csv files',{},pwd,'.*.csv');
+  if nargout>0, action='r'; else, action='w'; end
+  if ~exist('filename','var') || isempty(filename)    
+    filename = spm_select([0 1],'csv','Select *.csv files',{},pwd,'.*');
     if isempty(filename)
       if nargout>0, varargout{1}=cell(); end
       return;
@@ -45,12 +46,17 @@ function varargout = cat_io_csv(filename,varargin)
     filename = fullfile(pp,[ff ee]); 
   end     
   if strcmp(action,'w')
-    if nargin < 1+(nargout==0), C = {}; else C = varargin{1}; end
+    if nargin < 1+(nargout==0), C = {}; else, C = varargin{1}; end
     if ~isa(C,'cell'); C = num2cell(C); end
+    if strcmpi(spm_check_version,'octave') % RD20211212: under test
+      for ci = 1:numel(C)
+        C{ci} = char( min( 128 , max( 0 , double( C{ci} )))); 
+      end
+    end
   end
-  if nargin < 2+(nargout==0), sheet = '';       else sheet = varargin{2-(nargout>0)}; end
-  if nargin < 3+(nargout==0), pos   = '';       else pos   = varargin{3-(nargout>0)}; end
-  if nargin < 4+(nargout==0), opt   = struct(); else opt   = varargin{4-(nargout>0)}; end  
+  if nargin < 2+(nargout==0), sheet = '';       else, sheet = varargin{2-(nargout>0)}; end
+  if nargin < 3+(nargout==0), pos   = '';       else, pos   = varargin{3-(nargout>0)}; end
+  if nargin < 4+(nargout==0), opt   = struct(); else, opt   = varargin{4-(nargout>0)}; end  
   
   def.delimiter       = ',';
   def.komma           = '.'; 
@@ -81,7 +87,7 @@ function C=readcsv(filename,sheet,pos,opt)
 
   % read file and convert from string to cell
   fid = fopen(filename);
-  mv = version; mvi = strfind(mv,'R');
+  %mv = version; mvi = strfind(mv,'R');
  % if str2double(mv(mvi+1:mvi+4)) < 2015 % old ... str2double(mv(mvi+1:mvi+4)) > 2013 &&
  %   C1  = textscan(fid,'%q','delimiter',opt.linedelimiter,'BufSize',2^24); C1=C1{1};
  % else % new
@@ -108,12 +114,22 @@ function C=readcsv(filename,sheet,pos,opt)
   % es gibt hier ein problem mit 
   % - sonderzeichen wie äöü
   % - anderen sonderzeichen 
-  C1  = strrep(C1,'Ã¤','ä');
-  C1  = strrep(C1,'Ã¼','ü');
-  C1  = strrep(C1,'Ã¶','ö');
   
+  if strcmpi(spm_check_version,'octave') 
+    if iscell( C1 )
+      for i = 1:numel( C1 )
+        C1{i} = char( min(255, max(0, double( C1{i} ))));
+      end
+    elseif ischar( C1 )
+      C1  = char( min(255, max(0, double( C1 ))));
+    end
+  else
+    C1  = strrep(C1,'Ã¤','ä');
+    C1  = strrep(C1,'Ã¼','ü');
+    C1  = strrep(C1,'Ã¶','ö');
+  end
 
-  for i=1:size(C1,1),
+  for i=1:size(C1,1)
     try
       
     %  if numel(strfind(C1{i},';'))>0
@@ -140,7 +156,7 @@ function C=readcsv(filename,sheet,pos,opt)
   end
 
   % set colum and row...
-  if isempty(pos), C=C3; else C=readC(C3,pos); end
+  if isempty(pos), C=C3; else, C=readC(C3,pos); end
 
   % if a field could be interpreted as a number, then convert it to a float 
   % ??? if there is a comma otherwise to integer???
@@ -154,11 +170,11 @@ function writecsv(filename,C,sheet,pos,opt)
   % check if xlswrite could work
   
   % set colum and row
-  if isempty(pos), else C=readC(C,pos); end
+  if isempty(pos), else, C=readC(C,pos); end
 
   for i=1:numel(C)
     if ~isempty(C{i})
-      if isnumeric(C{i}), 
+      if isnumeric(C{i}) 
 %           if isnan(C{i}) || isinf(C{i}), C{i}=sprintf('%0.0f',C{i});
 %           else C{i}=sprintf(sprintf('%%0.0f,%%0%0.0f.0f',opt.digit),fix(C{i}),abs(C{i}*10^opt.digit-fix(C{i})*10^opt.digit));
 %           end
@@ -169,7 +185,7 @@ function writecsv(filename,C,sheet,pos,opt)
 
   % read old file if there is one an merge the cells where C isn't
   % specified the old value still exist
-  if exist(filename,'file');
+  if exist(filename,'file')
     fid = fopen(filename); 
     MO  = textscan(fid,'%s','delimiter',opt.linedelimiter); MO = MO{1};
     fclose(fid);
@@ -186,6 +202,8 @@ function writecsv(filename,C,sheet,pos,opt)
   end
 
   M=cell(size(C,1),1);
+  if strcmpi(spm_check_version,'octave'), M =cellstr(M); end
+  
   for i=1:size(C,1)
     for j=1:size(C,2)
       if ~isstruct(C{i,j}) && ~iscell(C{i,j})
@@ -209,9 +227,9 @@ function writecsv(filename,C,sheet,pos,opt)
   end
   M=cell2mat(M');
 
-  if ~exist(fileparts(filename),'dir'), mkdir(fileparts(filename));end
+  if ~exist(fileparts(filename),'dir'), mkdir(fileparts(filename)); end
   
-  f=fopen(filename,'w'); if f~=-1, fprintf(f,M); fclose(f); end;
+  f=fopen(filename,'w'); if f~=-1, fprintf(f,M); fclose(f); end
 
 end
 function [Cpos,ijpos]=readC(C,pos)

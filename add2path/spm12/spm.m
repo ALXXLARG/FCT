@@ -4,12 +4,12 @@ function varargout=spm(varargin)
 %  ___  ____  __  __
 % / __)(  _ \(  \/  )  
 % \__ \ )___/ )    (   Statistical Parametric Mapping
-% (___/(__)  (_/\/\_)  SPM - http://www.fil.ion.ucl.ac.uk/spm/
+% (___/(__)  (_/\/\_)  SPM - https://www.fil.ion.ucl.ac.uk/spm/
 %_______________________________________________________________________
 %
 % SPM (Statistical Parametric Mapping) is a package for the analysis
 % functional brain mapping experiments. It is the in-house package of
-% the Wellcome Trust Centre for Neuroimaging, and is available to the
+% the Wellcome Centre for Human Neuroimaging, and is available to the
 % scientific community as copyright freeware under the terms of the
 % GNU General Public Licence.
 % 
@@ -19,7 +19,7 @@ function varargout=spm(varargin)
 % command line using the command `spm_help`.
 %
 % Details of this release are available via the "About SPM" help topic
-% accessible from the SPM splash screen. See also README.txt.
+% accessible from the SPM splash screen. See also README.md.
 % 
 % This spm function initialises the default parameters, and displays a
 % splash screen with buttons leading to the PET, fMRI and M/EEG
@@ -50,10 +50,10 @@ function varargout=spm(varargin)
 % FORMAT & help in the main body of spm.m
 %
 %_______________________________________________________________________
-% Copyright (C) 1991,1994-2015 Wellcome Trust Centre for Neuroimaging
+% Copyright (C) 1991,1994-2019 Wellcome Trust Centre for Neuroimaging
 
 % Andrew Holmes
-% $Id: spm.m 6894 2016-09-30 16:48:46Z spm $
+% $Id: spm.m 7606 2019-06-06 10:52:30Z guillaume $
 
 
 %=======================================================================
@@ -306,7 +306,7 @@ case 'asciiwelcome'                           %-ASCII SPM banner welcome
 disp( ' ___  ____  __  __                                            ');
 disp( '/ __)(  _ \(  \/  )                                           ');
 disp( '\__ \ )___/ )    (   Statistical Parametric Mapping           ');
-disp(['(___/(__)  (_/\/\_)  ',spm('Ver'),' - http://www.fil.ion.ucl.ac.uk/spm/']);
+disp(['(___/(__)  (_/\/\_)  ',spm('Ver'),' - https://www.fil.ion.ucl.ac.uk/spm/']);
 fprintf('\n');
 
 
@@ -348,7 +348,7 @@ Fgraph = spm_figure('Create','Graphics','Graphics','off'); fprintf('.');
 spm_figure('WaterMark',Finter,spm('Ver'),'',45);
 
 url = fullfile(spm('Dir'),'help','index.html');
-%url = fullfile(spm('Dir'),'README.txt');
+%url = fullfile(spm('Dir'),'README.md');
 spm_help('!Disp',url,'',Fgraph);                           fprintf('.');
 
 %-Setup for current modality
@@ -373,7 +373,7 @@ case 'chmod'                      %-Change SPM modality PET<->fMRI<->EEG
 %-Sort out arguments
 %-----------------------------------------------------------------------
 if nargin<2, Modality = ''; else Modality = varargin{2}; end
-[Modality,ModNum] = spm('CheckModality',Modality);
+Modality = spm('CheckModality',Modality);
 
 %-Sort out global defaults
 %-----------------------------------------------------------------------
@@ -381,25 +381,8 @@ spm('defaults',Modality);
 
 %-Sort out visibility of appropriate controls on Menu window
 %-----------------------------------------------------------------------
-Fmenu = spm_figure('FindWin','Menu');
-if ~isempty(Fmenu)
-    if strcmpi(Modality,'PET')
-        set(findobj(Fmenu, '-regexp', 'Tag', 'FMRI'), 'Visible', 'off');
-        set(findobj(Fmenu, '-regexp', 'Tag', 'EEG'),  'Visible', 'off');
-        set(findobj(Fmenu, '-regexp', 'Tag', 'PET'),  'Visible', 'on' );
-    elseif strcmpi(Modality,'FMRI')
-        set(findobj(Fmenu, '-regexp', 'Tag', 'EEG'),  'Visible', 'off');
-        set(findobj(Fmenu, '-regexp', 'Tag', 'PET'),  'Visible', 'off');
-        set(findobj(Fmenu, '-regexp', 'Tag', 'FMRI'), 'Visible', 'on' );
-    else
-        set(findobj(Fmenu, '-regexp', 'Tag', 'PET'),  'Visible', 'off');
-        set(findobj(Fmenu, '-regexp', 'Tag', 'FMRI'), 'Visible', 'off');
-        set(findobj(Fmenu, '-regexp', 'Tag', 'EEG'),  'Visible', 'on' );
-    end
-    set(findobj(Fmenu,'Tag','Modality'),'Value',ModNum,'UserData',ModNum);
-else
-    warning('SPM Menu window not found');
-end
+spm_Menu('Switch',Modality);
+
 
 %=======================================================================
 case 'defaults'                  %-Set SPM defaults (as global variable)
@@ -417,30 +400,44 @@ spm_get_defaults('modality',Modality);
 %-Addpath (modality-specific) toolboxes
 %-----------------------------------------------------------------------
 if ~isdeployed
+    ws = warning('off','MATLAB:mpath:nameNonexistentOrNotADirectory');
     addpath(fullfile(spm('Dir'),'toolbox','DEM'));
+    warning(ws);
 end
 
 if strcmpi(Modality,'EEG')
-    if ~isdeployed
-        addpath(fullfile(spm('Dir'),'external','fieldtrip'));
+    if exist(fullfile(spm('Dir'),'external','fieldtrip'),'dir') ~= 7
+        warning('FieldTrip not available: some features will be missing.');
+    else
+        if ~isdeployed
+            addpath(fullfile(spm('Dir'),'external','fieldtrip'));
+        end
+        clear ft_defaults
+        clear global ft_default
+        global ft_default
+        ft_default.trackcallinfo = 'no';
+        ft_default.showcallinfo = 'no';
+        ft_default.trackusage = 'no';
+        ft_defaults;
+        ft_default.trackcallinfo = 'no';
+        ft_default.showcallinfo = 'no';
+        ft_default.trackusage = 'no';
+        ft_warning('off','backtrace');
     end
-    clear ft_defaults
-    clear global ft_default
-    ft_defaults;
-    global ft_default
-    ft_default.trackcallinfo = 'no';
-    ft_default.showcallinfo = 'no';
     if ~isdeployed
+        ws = warning('off','MATLAB:mpath:nameNonexistentOrNotADirectory');
         addpath(...
             fullfile(spm('Dir'),'external','bemcp'),...
             fullfile(spm('Dir'),'external','ctf'),...
             fullfile(spm('Dir'),'external','eeprobe'),...
             fullfile(spm('Dir'),'external','mne'),...
             fullfile(spm('Dir'),'external','yokogawa_meg_reader'),...
+            fullfile(spm('Dir'),'external','ricoh_meg_reader'),...
             fullfile(spm('Dir'),'toolbox', 'dcm_meeg'),...
             fullfile(spm('Dir'),'toolbox', 'spectral'),...
             fullfile(spm('Dir'),'toolbox', 'Neural_Models'),...
             fullfile(spm('Dir'),'toolbox', 'MEEGtools'));
+        warning(ws);
     end
 end
 
@@ -496,66 +493,7 @@ case 'createmenuwin'                            %-Create SPM menu window
 %=======================================================================
 % Fmenu = spm('CreateMenuWin',Vis)
 %-----------------------------------------------------------------------
-if nargin<2, Vis='on'; else Vis=varargin{2}; end
-
-%-Close any existing 'Menu' 'Tag'ged windows
-%-----------------------------------------------------------------------
-delete(spm_figure('FindWin','Menu'))
-Fmenu = openfig(fullfile(spm('Dir'),'spm_Menu.fig'),'new','invisible');
-set(Fmenu,'name',[spm('Version') ': Menu']);
-S0 = spm('WinSize','0',1);
-SM = spm('WinSize','M');
-set(Fmenu,'Units','pixels', 'Position',[S0(1) S0(2) 0 0] + SM);
-
-%-Set SPM colour
-%-----------------------------------------------------------------------
-set(findobj(Fmenu,'Tag', 'frame'),'backgroundColor',spm('colour'));
-set(Fmenu,'Color',[1 1 1]*.8);
-if ismac
-    set(findobj(Fmenu,'UserData','LABEL'),'Visible','off','Tag','');
-end
-
-%-Set Utils
-%-----------------------------------------------------------------------
-set(findobj(Fmenu,'Tag', 'Utils'), 'String',{'Utils...',...
-    'CD',...
-    'PWD',...
-    'Run M-file',...
-    'Load MAT-file',...
-    'Save MAT-file',...
-    'Delete files',...
-    'Show SPM',...
-    'Show MATLAB'});
-set(findobj(Fmenu,'Tag', 'Utils'), 'UserData',{...
-    ['spm(''FnBanner'',''CD'');' ...
-     'cd(spm_select(1,''dir'',''Select new working directory''));' ...
-     'spm(''alert"'',{''New working directory:'',[''    '',pwd]},''CD'',1);'],...
-    ['spm(''FnBanner'',''PWD'');' ...
-     'spm(''alert"'',{''Present working directory:'',[''    '',pwd]},''PWD'',1);'],...
-    ['spm(''FnBanner'',''Run M-file'');' ...
-     'spm(''Run'');' ...
-     'fprintf(''%-40s: %30s\n'',''Completed'',spm(''time''));'],...
-    ['spm(''FnBanner'',''Load MAT-file'');' ...
-     'load(spm_select(1,''mat'',''Select MAT-file''));'],...
-    ['spm(''FnBanner'',''Save MAT-file'');' ...
-     'save(spm_input(''Output filename'',1,''s''), spm_get_defaults(''mat.format''));'],...
-    ['spm(''FnBanner'',''Delete files'');' ...
-     'spm(''Delete'');'],...
-    ['spm(''FnBanner'',''Show SPM'');' ...
-     'spm(''Show'');'],...
-    ['spm(''FnBanner'',''Show Command Window'');' ...
-     'commandwindow;']});
-
-%-Set Toolboxes
-%-----------------------------------------------------------------------
-xTB       = spm('tbs');
-if ~isempty(xTB)
-    set(findobj(Fmenu,'Tag', 'Toolbox'),'String',{'Toolbox:' xTB.name });
-    set(findobj(Fmenu,'Tag', 'Toolbox'),'UserData',xTB);
-else
-    set(findobj(Fmenu,'Tag', 'Toolbox'),'Visible','off')
-end
-set(Fmenu,'Visible',Vis);
+Fmenu = spm_Menu('Create',varargin{2:end});
 varargout = {Fmenu};
 
 
@@ -594,6 +532,9 @@ Finter = figure('IntegerHandle','off',...
     'DefaultUicontrolInterruptible','on',...
     'Renderer','painters',...
     'Visible',Vis);
+if spm_check_version('matlab','8.3') < 0
+    set(Finter,'DoubleBuffer','on');
+end
 varargout = {Finter};
 
 %=======================================================================
@@ -1191,6 +1132,7 @@ else
 end
 mscript = cellstr(mscript);
 for i=1:numel(mscript)
+    mscript{i} = spm_file(mscript{i},'local',pwd);
     if isdeployed
         [p,n,e] = fileparts(mscript{i});
         if isempty(p), p = pwd;  end
@@ -1199,12 +1141,17 @@ for i=1:numel(mscript)
         S = fileread(mscript{i});
         try
             assignin('base','mfilename',@(varargin) mscript{i});
-            evalin('base',S);
+            if strncmp(S,'V1MCC',5)
+                evalin('base',n); % mcc compiled script
+            else
+                evalin('base',S);
+            end
         catch
             fprintf('Execution failed: %s\n',mscript{i});
             rethrow(lasterror);
         end
     else
+        try, inputs = evalin('base','inputs'); end
         try
             run(mscript{i});
         catch

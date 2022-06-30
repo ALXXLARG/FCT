@@ -1,21 +1,31 @@
-function cat_batch_vbm(namefile,cat_defaults)
-% wrapper for using batch mode (see cat_batch_cat12.sh)
+function cat_batch_cat(namefile,cat_defaults)
+% wrapper for using batch mode (see cat_batch_cat.sh)
 %
-% namefile      - array of file names
+% namefile      - array of file names or text file with file names
 % cat_defaults  - use this default file instead of cat_defaults.m
 %
-%_______________________________________________________________________
-% $Id: cat_batch_cat.m 1135 2017-06-07 09:04:11Z gaser $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_batch_cat.m 1791 2021-04-06 09:15:54Z gaser $
 
  %#ok<*TRYNC>
  
 if nargin < 1
-	fprintf('Syntax: cat_batch_vbm(namefile)\n');
-	return
+  fprintf('Syntax: cat_batch_cat(namefile,cat_defaults)\n');
+  return
 end
 
+addpath(fileparts(which(mfilename)))
+
 [t,pid] = system('echo $$');
-fprintf('cat_batch_vbm: \n  PID = %s\n\n',pid);
+fprintf('cat_batch_cat: \n  PID = %s\n\n',pid);
+
+global defaults cat matlabbatch %#ok<NUSED>
 
 spm_get_defaults;
 
@@ -27,67 +37,60 @@ else
     else
         fprintf('Use defaults in %s.\n',cat_defaults);
         [pp, name] = spm_fileparts(cat_defaults);
+        clear cat_defaults
         oldpath = pwd;
-        cd(pp)
+        if ~isempty(pp), cd(pp); end
         eval(name);
         cd(oldpath)
     end
 end
-global defaults cat12 matlabbatch %#ok<NUSED>
 
-fid = fopen(namefile,'r');
-names = textscan(fid,'%s');
-names = names{:};
-fclose(fid);
-n = length(names);
+if ~iscell(namefile)
+  [pth,nam,ext] = spm_fileparts(namefile);
+end
+
+% check whether namefile is a cell of filenames, a nifti filename,
+% or a text file with filenames
+if iscell(namefile)
+  names0 = namefile;
+  is_filelist = 1;
+elseif strcmp(ext,'.nii') | strcmp(ext,'.img')
+  names0 = cellstr(namefile);
+  is_filelist = 1;
+else % or use list of names in text file
+  fid = fopen(namefile,'r');
+  names0 = textscan(fid,'%s');
+  names0 = names0{:};
+  fclose(fid);
+  is_filelist = 0;
+end
+
+n = length(names0);
 
 if n == 0, error(sprintf('No file found in %s.\n',namefile)); end %#ok<SPERR>
 
-matlabbatch{1}.spm.tools.cat.estwrite = cat12;
+i = 1;
+while i <= n
+  % if no .nii or .img was found assume that the filenames contains spaces and is therefore divided into
+  % different cells
+  if isempty(strfind(names0{i},'.nii')) && isempty(strfind(names0{i},'.img')) && i<length(names0)
+    names{i,1} = [deblank(names0{i}) ' ' deblank(names0{i+1})];
+    i = i+1;
+  else
+    names{i,1} = deblank(names0{i});
+  end
+  i = i+1;
+end
+
+matlabbatch{1}.spm.tools.cat.estwrite = cat;
 matlabbatch{1}.spm.tools.cat.estwrite.data = cellstr(names);
 
-tmp_fields = char('darteltpm','gcutstr','cleanupstr','mrf','NCstr','BVCstr','LASstr','restype','resval','species',...
-              'WMHC','WMHCstr','pbtres','INV','colormap','atlas','print','debug','verb','ignoreErrors',...
-              'QAcleanup','QAcleanupth','LAB','vox','bb','cat12atlas','sanlm','expertgui','brainmask','T1','APP','subfolders');
-              
-for i=1:size(tmp_fields,1)
-  try
-    matlabbatch{1}.spm.tools.cat.estwrite.extopts = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.extopts,deblank(tmp_fields(i,:)));
-  end
-end
+% remove fields to suppress warnings
+matlabbatch{1}.spm.tools.cat.estwrite = rmfield(matlabbatch{1}.spm.tools.cat.estwrite,'extopts');
+matlabbatch{1}.spm.tools.cat.estwrite = rmfield(matlabbatch{1}.spm.tools.cat.estwrite,'output');
+matlabbatch{1}.spm.tools.cat.estwrite = rmfield(matlabbatch{1}.spm.tools.cat.estwrite,'opts');
 
-tmp_fields = char('atlas','te','pc','WMH','ROI','TPMC','label','CSF');
-for i=1:size(tmp_fields,1)
-  try
-    matlabbatch{1}.spm.tools.cat.estwrite.output = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.output,deblank(tmp_fields(i,:)));
-  end
-end
-
-
-tmp_fields = char('opts','bias','realign','defs','nproc');
-for i=1:size(tmp_fields,1)
-  try
-    matlabbatch{1}.spm.tools.cat.estwrite = rmfield(matlabbatch{1}.spm.tools.cat.estwrite,deblank(tmp_fields(i,:)));
-  end
-end
-
-try 
-  matlabbatch{1}.spm.tools.cat.estwrite.output.GM  = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.output.GM,'mod');
-  matlabbatch{1}.spm.tools.cat.estwrite.output.WM  = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.output.WM,'mod');
-  matlabbatch{1}.spm.tools.cat.estwrite.output.CSF = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.output.CSF,'mod');
-end
-
-try 
-  matlabbatch{1}.spm.tools.cat.estwrite.output.GM  = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.output.GM,'native');
-  matlabbatch{1}.spm.tools.cat.estwrite.output.GM  = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.output.GM,'warped');
-  matlabbatch{1}.spm.tools.cat.estwrite.output.WM  = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.output.WM,'native');
-  matlabbatch{1}.spm.tools.cat.estwrite.output.WM  = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.output.WM,'warped');
-  matlabbatch{1}.spm.tools.cat.estwrite.output.bias  = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.output.bias,'native');
-  matlabbatch{1}.spm.tools.cat.estwrite.output.bias  = rmfield(matlabbatch{1}.spm.tools.cat.estwrite.output.bias,'dartel');
-  matlabbatch{1}.spm.tools.cat.estwrite = rmfield(matlabbatch{1}.spm.tools.cat.estwrite,'estwrite');
-end
-
-% deselect multithreading for batch
+% deselect multi-threading for batch
 matlabbatch{1}.spm.tools.cat.estwrite.nproc = 0;
 
 try
@@ -101,6 +104,8 @@ catch %#ok<CTCH> % catch with lasterror is necessary for old matlab versions
   error('Batch failed.');
 end
 
-spm_unlink(char(namefile))
+% delete text file with filenames
+if ~is_filelist, spm_unlink(char(namefile)); end
 
+warning off
 exit

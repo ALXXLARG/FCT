@@ -3,16 +3,13 @@ function Q = spm_MDP_VB_game(MDP)
 % FORMAT Q = spm_MDP_VB_game(MDP)
 %
 % MDP.P(M,T)      - probability of emitting action 1,...,M at time 1,...,T
-% MDP.Q(N,T)      - an array of conditional (posterior) expectations over
-%                   N hidden states and time 1,...,T
-% MDP.X           - and Bayesian model averages over policies
+% MDP.X           - conditional expectations over hidden states
 % MDP.R           - conditional expectations over policies
 % MDP.O(O,T)      - a sparse matrix encoding outcomes at time 1,...,T
 % MDP.S(N,T)      - a sparse matrix encoding states at time 1,...,T
 % MDP.U(M,T)      - a sparse matrix encoding action at time 1,...,T
 % MDP.W(1,T)      - posterior expectations of precision
 %
-% MDP.un  = un    - simulated neuronal encoding of hidden states
 % MDP.xn  = Xn    - simulated neuronal encoding of policies
 % MDP.wn  = wn    - simulated neuronal encoding of precision
 % MDP.da  = dn    - simulated dopamine responses (deconvolved)
@@ -32,7 +29,7 @@ function Q = spm_MDP_VB_game(MDP)
 % Copyright (C) 2005 Wellcome Trust Centre for Neuroimaging
 
 % Karl Friston
-% $Id: spm_MDP_VB_game.m 6763 2016-04-04 09:24:18Z karl $
+% $Id: spm_MDP_VB_game.m 7766 2020-01-05 21:37:39Z karl $
 
 % numbers of transitions, policies and states
 %--------------------------------------------------------------------------
@@ -44,11 +41,12 @@ else
     Ng = 1;
 end
 
+
 % graphics
 %==========================================================================
-Nt    = length(MDP);               % number of trials
-Ne    = size(MDP(1).V,1) + 1;      % number of epochs per trial
-Np    = size(MDP(1).V,2) + 1;      % number of policies
+Nt    = numel(MDP);                      % number of trials
+Ne    = MDP(1).T;                        % number of outcomes per trial
+Np    = size(MDP(1).V,2);                % number of policies
 for i = 1:Nt
     
     % assemble expectations of hidden states and outcomes
@@ -64,10 +62,20 @@ for i = 1:Nt
             end
         end
     end
+    
+    % fill-in selected policies if missing
+    %----------------------------------------------------------------------
+    try
+        MDP(i).v;
+    catch
+        MDP(i).v = [];
+    end
+    
     s(:,i) = MDP(i).s(:,1);
     o(:,i) = MDP(i).o(:,end);
-    u(:,i) = MDP(i).R(:,end);
-    w(:,i) = mean(MDP(i).dn,2);
+    u{1,i} = MDP(i).R;
+    v{1,i} = MDP(i).v;
+    w(:,i) = MDP(i).dn,2;
     
     
     % assemble context learning
@@ -102,7 +110,14 @@ for i = 1:Nt
             p(i) = p(i) + log(U(MDP(i).o(g,t),t))/Ne;
         end
     end
-    q(i)   = sum(MDP(i).rt(2:end));
+    
+    % reaction time
+    %----------------------------------------------------------------------
+    try
+        q(i) = sum(MDP(i).rt(2:end));
+    catch
+        q(i) = 0;
+    end
     
 end
 
@@ -122,6 +137,8 @@ end
 % Initial states and expected policies (habit in red)
 %--------------------------------------------------------------------------
 col   = {'r.','g.','b.','c.','m.','k.'};
+u     = spm_cat(u);
+v     = spm_cat(v);
 t     = 1:Nt;
 subplot(6,1,1)
 if Nt < 64
@@ -129,16 +146,15 @@ if Nt < 64
 else
     MarkerSize = 16;
 end
-image(64*(1 - u)),  hold on
+image(t,1:Np,64*(1 - u)),  hold on
+plot(linspace(1,Nt,numel(v)),v,'c.','MarkerSize',16)
 for f = 1:Nf
     for i = 1:max(s(f,:))
         j = find(s(f,:) == i);
-        plot(t(j),j - j + f,col{rem(i - 1,6)+ 1},'MarkerSize',MarkerSize)
+        plot(t(j),j - j + f - Nf,col{rem(i - 1,6)+ 1},'MarkerSize',MarkerSize)
     end
 end
-try
-    plot(Np*(1 - u(Np,:)),'r')
-end
+set(gca,'YLim',[-Nf,Np] + 1/2), box off
 try
     E = spm_softmax(spm_cat({MDP.e}));
     plot(Np*(1 - E(end,:)),'r:')
@@ -161,12 +177,12 @@ for g = 1:Ng
     end
 end
 title('Final outcome, performance and reaction times')
-ylabel('Expected utility'), spm_axis tight, hold off
+ylabel('Expected utility'), spm_axis tight, hold off, box off
 
 % Initial states (context)
 %--------------------------------------------------------------------------
 subplot(6,1,3)
-col   = {'r','b','g','c','m','k'};
+col   = {'r','b','g','c','m','k','r','b','g','c','m','k'};
 for f = 1:Nf
     if Nf > 1
         plot(spm_cat(x{f}),col{f}), hold on
@@ -174,8 +190,8 @@ for f = 1:Nf
         plot(spm_cat(x{f}))
     end
 end
-title('State estimation (ERPs)')
-ylabel('Response'), spm_axis tight, hold off
+title('State estimation (ERPs)'), ylabel('Response'), 
+spm_axis tight, hold off, box off
 
 % Precision (dopamine)
 %--------------------------------------------------------------------------
@@ -188,7 +204,9 @@ else
     bar(w,1.1,'k')
 end
 title('Precision (dopamine)')
-ylabel('Precision','FontSize',12), spm_axis tight
+ylabel('Precision','FontSize',12), spm_axis tight, box off
+YLim = get(gca,'YLim'); YLim(1) = 0; set(gca,'YLim',YLim);
+set(gca,'XTickLabel',{});
 
 % learning - D
 %--------------------------------------------------------------------------
@@ -197,9 +215,19 @@ for f = 1:Nf
     if f < 2
         title('Context Learning')
     end
-    try
-        ylabel(MDP(1).Bname{f})
+    set(gca,'XTick',1:Nt);
+    if f < Nf
+        set(gca,'XTickLabel',{});
     end
+    set(gca,'YTick',1);
+    try
+        set(gca,'YTickLabel',MDP(1).label.factor{f});
+    end
+    try
+        set(gca,'YTickLabel',MDP(1).Bname{f});
+    end
+    
+    
 end
 if isfield(MDP(1),'c')
     title('Learning (C and D)')

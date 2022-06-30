@@ -1,10 +1,10 @@
 % Statistical Parametric Mapping
-% Version 6906 (SPM12) 20-Oct-16
+% Version 7771 (SPM12) 13-Jan-20
 %__________________________________________________________________________
 %  ___  ____  __  __
 % / __)(  _ \(  \/  )  
 % \__ \ )___/ )    (   Statistical Parametric Mapping
-% (___/(__)  (_/\/\_)  SPM - http://www.fil.ion.ucl.ac.uk/spm/
+% (___/(__)  (_/\/\_)  SPM - https://www.fil.ion.ucl.ac.uk/spm/
 %__________________________________________________________________________
 %
 % This Contents.m file holds the version ID for this release of SPM.
@@ -18,9 +18,9 @@
 % different cohorts, or time-series from the same subject.  The current 
 % release is designed for the analysis of fMRI, PET, SPECT, EEG and MEG.
 %
-% SPM is developed under the auspices of Functional Imaging Laboratory
-% (FIL) The Wellcome Trust Centre for Neuroimaging, in the Institute of
-% Neurology at University College London (UCL), UK.
+% SPM is developed under the auspices of the Functional Imaging Laboratory
+% (FIL) at the Wellcome Centre for Human Neuroimaging, in the Queen Square
+% Institute of Neurology at University College London (UCL), UK.
 %
 % SPM is free software: you can redistribute it and/or modify it under the 
 % terms of the GNU General Public License as published by the Free Software
@@ -31,13 +31,13 @@
 % FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more 
 % details.
 % You should have received a copy of the GNU General Public License along
-% with SPM, in LICENCE.txt. If not, see <http://www.gnu.org/licenses/>.
+% with SPM, in LICENCE.txt. If not, see <https://www.gnu.org/licenses/>.
 %
-% See README.txt for details of this release.
+% See README.md for details of this release.
 %__________________________________________________________________________
-% Copyright (C) 1991,1994-2016 Wellcome Trust Centre for Neuroimaging
+% Copyright (C) 1991,1994-2020 Wellcome Centre for Human Neuroimaging
 
-% $Id: Contents.m 6905 2016-10-20 15:00:48Z guillaume $
+% $Id: Contents.m 7770 2020-01-13 11:26:14Z guillaume $
 
 %==========================================================================
 % PROGRAMMERS NOTE:

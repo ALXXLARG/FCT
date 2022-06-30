@@ -4,7 +4,7 @@ function [D] = spm_eeg_review_switchDisplay(D)
 % Copyright (C) 2008-2015 Wellcome Trust Centre for Neuroimaging
 
 % Jean Daunizeau
-% $Id: spm_eeg_review_switchDisplay.m 6405 2015-04-14 15:13:02Z guillaume $
+% $Id: spm_eeg_review_switchDisplay.m 7221 2017-11-16 14:25:37Z vladimir $
 
 try % only if already displayed stuffs
     handles = rmfield(D.PSD.handles,'PLOT');
@@ -87,7 +87,7 @@ if isempty(I)
 
 else
 
-    if ~strcmp(transformtype(D),'time')
+    if ~(strcmp(transformtype(D),'time') || D.nsamples == 1)
 
         uicontrol('style','text',...
             'units','normalized','Position',[0.14 0.84 0.7 0.04],...
@@ -163,7 +163,7 @@ else
         % add buttons
         object.type = 'buttons';
         object.list = [5;7];
-        if strcmp(transformtype(D),'time') % only for time data!
+        if strcmp(transformtype(D),'time') || D.nsamples==1 
             object.options.multSelect = 1;
             object.list = [object.list;4;6;11];
         else
@@ -542,7 +542,7 @@ switch D.PSD.VIZU.uitable
                             table{i,6} = 'Undefined';
                             table{i,7} = num2str(trialonset(D,1));
                         end
-                        colnames = {'label','type','value','duration','time','bad','onset'};
+                        colnames = {'label','type','value','duration','time','bad','offset'};
                         [ht,hc] = my_uitable(table,colnames);
                         set(ht,'units','normalized');
                         set(hc,'position',[0.1 0.05 0.74 0.7],...

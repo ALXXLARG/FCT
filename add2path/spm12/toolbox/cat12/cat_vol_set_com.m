@@ -1,23 +1,49 @@
-function cat_vol_set_com(vargin)
+function Affine = cat_vol_set_com(V)
 % use center-of-mass (COM) to roughly correct for differences in the
 % position between image and template
+% ______________________________________________________________________
+% FORMAT:  Affine = cat_vol_set_com(varargin)
+%
+% V      - mapped images or filenames 
+% Affine - affine transformation to roughly correct origin 
+% 
+% Only if no input is defined the function is called interactively and the
+% estimated transformation is applied to the images. Otherwise, only the 
+% Affine paramter is returned.
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_vol_set_com.m 1943 2022-02-04 16:53:42Z dahnke $
 
 
 if nargin == 1
-	P = char(vargin.data);
+  if isstruct(V)
+    V = V;
+  else
+    P = char(V);
+    V = spm_vol(P);
+  end
 else
   P = spm_select(Inf,'image','Select images to filter');
+  V = spm_vol(P);
 end
-V = spm_vol(P);
-n = size(P,1);
+n = numel(V);
 
 % pre-estimated COM of MNI template
 com_reference = [0 -20 -15];
 
+fprintf('Correct center-of-mass                                            ');
 for i=1:n
-  fprintf('Correct center-of-mass for %s\n',V(i).fname);
   Affine = eye(4);
-  vol = spm_read_vols(V(i));
+  if isfield(V(i),'dat')
+    vol(:,:,:) = V(i).dat(:,:,:);
+  else
+    vol = spm_read_vols(V(i));
+  end
   avg = mean(vol(:));
   avg = mean(vol(vol>avg));
   
@@ -28,5 +54,13 @@ for i=1:n
 
   M = spm_get_space(V(i).fname);
   Affine(1:3,4) = (com - com_reference)';
-  spm_get_space(V(i).fname,Affine\M);
+  
+  if nargin < 1
+    spm_get_space(V(i).fname,Affine\M);
+    fprintf('\n');
+  end
+  
+  if ~nargout
+    clear Affine
+  end
 end

@@ -3,11 +3,13 @@ function cat_vol_display_label(job)
 % Skript for SPM display functions to show label overlays of one or 
 % multiple atlas maps. 
 % ______________________________________________________________________
-% Robert Dahnke 
-% Structural Brain Mapping Group
-% University Jena
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
 % ______________________________________________________________________
-% $Id: cat_vol_display_label.m 846 2016-01-28 13:23:42Z gaser $ 
+% $Id: cat_vol_display_label.m 1833 2021-05-28 11:03:26Z gaser $ 
 
 %
 % based on cg_addtruecolorimage.m
@@ -17,7 +19,7 @@ function cat_vol_display_label(job)
 %  - display atlas rois of multiple atlas maps
 %
 
-  SVNid = '$Rev: 846 $';
+  SVNid = '$Rev: 1833 $';
   
   if ~exist('job','var'), job = struct(); end
 
@@ -128,7 +130,7 @@ function cat_vol_display_label(job)
   % only one label for all maps :/
   if size(job.data,1)<=2
     [pp,dsp] = fileparts(V(i).fname);
-    dsp = spm_atlas('Load',['dartel_' dsp]);
+    dsp = spm_atlas('Load',['cat12_' dsp]);
     for ii=1:numel(st.vols)
       if ~isempty(st.vols{ii})
         st.vols{ii}.display = dsp;

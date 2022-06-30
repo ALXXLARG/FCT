@@ -75,7 +75,13 @@ function [filesfound,numberfound] = cat_vol_findfiles(varargin)
 % SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %
 % ______________________________________________________________________
-% $Id: cat_vol_findfiles.m 1117 2017-03-16 15:31:20Z dahnke $ 
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_vol_findfiles.m 1791 2021-04-06 09:15:54Z gaser $ 
 
 %#ok<*EFIND>
 %#ok<*AGROW>
@@ -800,7 +806,9 @@ if sdepth == 0 || ...
 
         % and without ?
         else
-            ilist = dir([path patterns{pcount}]);
+            % prevent doubled wildcards that are not allowed
+            try, patterns{pcount} = regexprep(patterns{pcount}, '**', '*'); end
+            ilist = dir(fullfile(path,patterns{pcount}));
         end
         slist = numel(ilist);
 
@@ -1056,7 +1064,7 @@ function [linetocell,cellcount] = splittocell(varargin)
       if ldelim==1
           cpos=[(1-ldelim),find(line==delimiter)];
       else
-          cpos=[(1-ldelim),findstr(line,delimiter)];
+          cpos=[(1-ldelim),strfind(line,delimiter)];
       end
       lcpos =size(cpos,2);
 

@@ -21,11 +21,14 @@ function [TI,varargout] = cat_vol_iscale(T,action,vx_vol,varargin)
 %   varargout{1} = tissue peaks (BG,CSF,GM,WM,high) 
 % 
 % ______________________________________________________________________
-% Robert Dahnke 2012_10
-% Structural Brain Mapping Group
-% University Jena
 %
-% $Id: cat_vol_iscale.m 1103 2017-01-13 10:01:32Z gaser $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+%
+% $Id: cat_vol_iscale.m 1791 2021-04-06 09:15:54Z gaser $
 % ______________________________________________________________________
 
   
@@ -428,7 +431,7 @@ function [TI,varargout] = cat_vol_iscale(T,action,vx_vol,varargin)
 
           
           % peak tissue values
-          %  tp2=kmeans3D(T(B(:)>0),3,100,tp1(1:3));
+          %  tp2=cat_stat_kmeans(T(B(:)>0),3,100,tp1(1:3));
           WMr    = Br & Tr>mean(tp1(2:3)) & Tr<tp1(4);              
           tp2(3) = peak(Tr(WMr(:)));
           

@@ -2,10 +2,10 @@ function spm_eeg_inv_checkforward(varargin)
 % Check M/EEG forward model
 % FORMAT spm_eeg_inv_checkforward(D, val, ind)
 %__________________________________________________________________________
-% Copyright (C) 2008-2014 Wellcome Trust Centre for Neuroimaging
+% Copyright (C) 2008-2018 Wellcome Trust Centre for Neuroimaging
 
 % Vladimir Litvak
-% $Id: spm_eeg_inv_checkforward.m 6182 2014-09-18 12:03:18Z guillaume $
+% $Id: spm_eeg_inv_checkforward.m 7702 2019-11-22 11:32:26Z guillaume $
 
 
 %-SPM data structure
@@ -39,13 +39,9 @@ end
 
 %-Display
 %--------------------------------------------------------------------------
-Fgraph  = spm_figure('GetWin','Graphics'); figure(Fgraph); clf
-
-if ismac
-    set(Fgraph,'renderer','zbuffer');
-else
-    set(Fgraph,'renderer','OpenGL');
-end
+Fgraph  = spm_figure('GetWin','Graphics');
+spm_figure('Focus',Fgraph);
+spm_figure('Clear',Fgraph);
 
 spm('Pointer', 'Watch');
 
@@ -56,7 +52,7 @@ if isempty(chanind)
 end
 
 if ischar(vol)
-    vol = ft_read_vol(vol);
+    vol = ft_read_headmodel(vol);
 end
 
 face    = Mcortex.face;
@@ -67,12 +63,14 @@ hold on
 
 [volp, sens] = ft_prepare_vol_sens(vol, sens, 'channel', D.chanlabels(chanind));
 
-ft_plot_vol(vol, 'edgecolor', [0 0 0], 'facealpha', 0);
+ft_plot_headmodel(vol, 'edgecolor', [0 0 0], 'facealpha', 0);
 
-if ft_senstype(sens, 'eeg')
-    ft_plot_sens(sens, 'style', '*g', 'coil', true);
-else
-    ft_plot_sens(sens, 'style', '*g');
+hold on
+
+try
+    ft_plot_sens(sens, 'style', '*', 'edgecolor', 'g', 'elecsize', 20, 'coil', ft_senstype(sens, 'eeg'));
+catch
+    ft_plot_sens(sens, 'edgecolor', 'g', 'coilshape', 'point', 'elecsize', 20, 'coil', true);
 end
 
 rotate3d on;

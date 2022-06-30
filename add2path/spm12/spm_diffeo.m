@@ -99,6 +99,13 @@ function varargout = spm_diffeo(varargin)
 % F   - The differential operator encoded as an image (or images).
 %       Convolving a velocity field by this will give the momentum.
 %
+%       Note that a smaller (3D) kernel is obtained when the linear
+%       elasticity settings are all zero.  If any of the linear
+%       elasticity settings are non-zero, the resulting kernel is
+%       represented by a 5D array. For the 3D form, the voxel sizes
+%       need to be incorporated as an additional scaling of the kernel.
+%       See the code in spm_shoot_greens.m for an illustration.
+%
 %_______________________________________________________________________
 %
 % FORMAT y3 = spm_diffeo('comp',y1,y2)
@@ -205,6 +212,34 @@ function varargout = spm_diffeo(varargin)
 % Sample a function according to a deformation using trilinear interp.
 % f2 = f1(y)
 % f1, f2 and y are single precision floating point.
+% Uses boundary condiditions that wrap around (circulant - identical to
+% the 'pullc' option - but retained for backward compatibility).
+%
+%_______________________________________________________________________
+%
+% FORMAT f2 = spm_diffeo('pull', f1, y)
+% f1 - input image(s) n1*n2*n3*n4
+% y  - points to sample n1*n2*n3*3
+% f2 - output image n1*n2*n3*n4
+%
+% Sample a function according to a deformation using trilinear interp.
+% f2 = f1(y)
+% f1, f2 and y are single precision floating point.
+% Values sampled outside the field of view of f1 are assigned a value
+% of NaN.
+%
+%_______________________________________________________________________
+%
+% FORMAT f2 = spm_diffeo('pullc', f1, y)
+% f1 - input image(s) n1*n2*n3*n4
+% y  - points to sample n1*n2*n3*3
+% f2 - output image n1*n2*n3*n4
+%
+% Sample a function according to a deformation using trilinear interp.
+% f2 = f1(y)
+% f1, f2 and y are single precision floating point.
+% Uses boundary condiditions that wrap around (circulant - identical to
+% the 'samp' option).
 %
 %_______________________________________________________________________
 %
@@ -214,8 +249,10 @@ function varargout = spm_diffeo(varargin)
 % f2 - output image n1*n2*n3*n4
 %
 % Push values of a function according to a deformation.  Note that the
-% deformation should be the inverse of the one used with 'samp' or 'bsplins'.
-% f1, f2 and y are single precision floating point.
+% deformation should be the inverse of the one used with 'samp' or
+% 'bsplins'. f1, f2 and y are single precision floating point.
+% Voxels in f1 that would be pushed outside the field of view of f2 
+% are ignored.
 %
 %_______________________________________________________________________
 %
@@ -225,7 +262,7 @@ function varargout = spm_diffeo(varargin)
 % f2 - output image n1*n2*n3*n4
 %
 % Push values of a function according to a deformation, but using
-% circulant boundary conditions.  Data wraps around.
+% circulant boundary conditions.  Data wraps around (circulant).
 % f1, f2 and y are single precision floating point.
 %
 %_______________________________________________________________________
@@ -292,6 +329,16 @@ function varargout = spm_diffeo(varargin)
 %
 %_______________________________________________________________________
 %
+% FORMAT g = spm_diffeo('grad',v)
+% v  - velocity field
+% g  - gradient of velocity field
+%
+% The grad option can be applied to any collection of 3D volumes. If
+% the input has dimensions d1 x d2 x d3 x d4 x d5..., then the output
+% has dimensions d1 x d2 x d3 x (d4xd5...) x 3.
+%
+%_______________________________________________________________________
+%
 % FORMAT dv = spm_diffeo('div',v)
 % v  - velocity field
 % dv - divergences of velocity field
@@ -311,20 +358,6 @@ function varargout = spm_diffeo(varargin)
 % This function is used for each time step of geodesic shooting.  It may
 % change in future to use some form of Pade approximation of the
 % small deformation.
-%
-%_______________________________________________________________________
-%
-% FORMAT v3 = spm_diffeo('brc', v1, v2)
-% v1, v2, v3 - flow fields n1*n2*n3*3
-%
-% Lie Bracket.  Useful for many things
-% e.g. Baker-Campbell-Haussdorf series expansion.
-% The Lie bracket is denoted by
-% v3 = [v1,v2]
-% and on scalar fields, is computed by
-% v3 = J1*v2 - J2*v1, where J1 and J2 are the Jacobian
-% tensor fields. For matrices, the Lie bracket is simply
-% [A,B] = A*B-B*A
 %
 %_______________________________________________________________________
 %
@@ -411,7 +444,7 @@ function varargout = spm_diffeo(varargin)
 % Copyright (C) 2012 Wellcome Trust Centre for Neuroimaging
 
 % John Ashburner
-% $Id: spm_diffeo.m 6799 2016-05-20 16:50:25Z john $
+% $Id: spm_diffeo.m 7593 2019-05-20 18:58:16Z john $
 
 
 %-This is merely the help file for the compiled routine

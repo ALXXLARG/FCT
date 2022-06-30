@@ -8,7 +8,7 @@ function DEM = DEM_morphogenesis
 % of a multi-celled organism: where the states correspond to the location
 % and (chemotactic) signal expression of 16 cells.  The generative model
 % and process are remarkably simple; however, the ensuing migration and
-% differentiation of the 16 cells illustrates self-assembly – in the sense
+% differentiation of the 16 cells illustrates self-assembly - in the sense
 % that each cell starts of in the same location and releasing the same
 % signals.  In essence, the systems dynamics rest upon each cell inferring
 % its unique identity (in relation to all others) and behaving in accord
@@ -17,13 +17,13 @@ function DEM = DEM_morphogenesis
 % no hidden states and everything is expressed in terms of hidden causes
 % (because the attracting set is a point attractor)  Graphics are produced
 % illustrating the morphogenesis using colour codes to indicate the cell
-% type – that is interpreted in terms of genetic and epigenetic
+% type - that is interpreted in terms of genetic and epigenetic
 % processing.
 % _________________________________________________________________________
 % Copyright (C) 2008 Wellcome Trust Centre for Neuroimaging
  
 % Karl Friston
-% $Id: DEM_morphogenesis.m 6801 2016-05-29 19:18:06Z karl $
+% $Id: DEM_morphogenesis.m 7679 2019-10-24 15:54:07Z spm $
  
  
 % preliminaries
@@ -35,7 +35,7 @@ N        = 32;                             % length of process (bins)
  
 % generative process and model
 %==========================================================================
-M(1).E.d  = 2;                             % approximation order
+M(1).E.d  = 1;                             % approximation order
 M(1).E.n  = 2;                             % embedding order
 M(1).E.s  = 1;                             % smoothness
  

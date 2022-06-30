@@ -10,14 +10,14 @@ function MDP = DEM_MDP_decision
 % instanceen codes ambiguity (perceptual noise), while the B matrix encodes
 % the behaviour-dependent transitions among decision states. Finally,
 % the C matrix  encodes  prior costs or preferences. In this instance, the
-% agent does not want to be wrong – and prefers to be right.
+% agent does not want to be wrong - and prefers to be right.
 %
 % in what follows, we simulate a single trial to illustrate the underlying
 % Bayesian belief updating and associated behavioural and physiological
 % responses. We then consider multiple trials under different levels of
 % ambiguity and cost. The dependent measures in this instance include the
 % behavioural accuracy, reaction times (assuming 250 ms time bins) and the
-% uncertainty about the cause of sensory cues and control – as measured by
+% uncertainty about the cause of sensory cues and control - as measured by
 % the entropy of posterior beliefs prior to making a choice.
 %
 % see also: DEM_demo_MDP_rule.m and spm_MPD_VB_X.m
@@ -25,7 +25,7 @@ function MDP = DEM_MDP_decision
 % Copyright (C) 2005 Wellcome Trust Centre for Neuroimaging
 
 % Karl Friston
-% $Id: DEM_MDP_decision.m 6786 2016-04-27 19:38:30Z karl $
+% $Id: DEM_MDP_decision.m 7679 2019-10-24 15:54:07Z spm $
 
 % set up and preliminaries
 %==========================================================================
@@ -121,6 +121,7 @@ mdp.u = [1 3]'*ones(1,T);
 mdp.Aname = {'cue', 'feedback'};
 mdp.Bname = {'rule','decision'};
 mdp.alpha = 2;
+mdp.tau   = 2;
 
 mdp  = spm_MDP_check(mdp);
 
@@ -151,10 +152,9 @@ xlabel('epoch'),ylabel('P(correct choice)')
 title('Expected behaviour','FontSize',16)
 
 
-
 % illustrate choice behaviour over different levels ambiguity and reward
 %==========================================================================
-a = (1:32)/64;                      % range of perceptual ambiguity
+a = (0:16)/128;                     % range of perceptual ambiguity
 c = [1 2];                          % levels of reward
 t = (2:T)/4;                        % time (250 ms bins)
 for i = 1:numel(a)

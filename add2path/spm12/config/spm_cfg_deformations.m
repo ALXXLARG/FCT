@@ -1,14 +1,14 @@
 function conf = spm_cfg_deformations
 % Configuration file for deformation jobs
 %_______________________________________________________________________
-% Copyright (C) 2008 Wellcome Trust Centre for Neuroimaging
+% Copyright (C) 2008-2016 Wellcome Trust Centre for Neuroimaging
 
 % John Ashburner
-% $Id: spm_cfg_deformations.m 6578 2015-10-15 15:22:12Z volkmar $
+% $Id: spm_cfg_deformations.m 7700 2019-11-21 17:09:15Z john $
 
-hsummary = {[...
-'This is a utility for working with deformation fields. ',...
-'They can be loaded, inverted, combined etc, and the results ',...
+hsummary = {
+'Utility for working with deformation fields.',...
+['They can be loaded, inverted, combined etc, and the results ',...
 'either saved to disk, or applied to some image or surface file. ',...
 'This utility was intended for imaging experts and may therefore ',...
 'be a bit difficult for naive users. ',...
@@ -248,8 +248,8 @@ interp.name = 'Interpolation';
 interp.tag  = 'interp';
 interp.labels = {'Nearest neighbour','Trilinear','2nd Degree B-spline',...
 '3rd Degree B-Spline ','4th Degree B-Spline ','5th Degree B-Spline',...
-'6th Degree B-Spline','7th Degree B-Spline'};
-interp.values = {0,1,2,3,4,5,6,7};
+'6th Degree B-Spline','7th Degree B-Spline','Categorical'};
+interp.values = {0,1,2,3,4,5,6,7,-1};
 interp.def  = @(val)spm_get_defaults('normalise.write.interp',val{:});
 interp.help    = {
                   ['The method by which the images are sampled when ' ...
@@ -266,6 +266,10 @@ interp.help    = {
                   'degree splines. Can produce values outside the ' ...
                   'original range (e.g. small negative values from an ' ...
                   'originally all positive image).']
+                  '    Categorical:'
+                  ['       - Slow (particularly when there are lots of '...
+                  'categories). This is intended to warp categorical images ' ...
+                  'such as label maps.']
 }';
 
 % ---------------------------------------------------------------------
@@ -308,13 +312,16 @@ preserve.name    = 'Preserve';
 preserve.help    = {
 'Preserve Concentrations: Smoothed spatially normalised images (sw*) represent weighted averages of the signal under the smoothing kernel, approximately preserving the intensities of the original images. This option is currently suggested for eg fMRI.'
 ''
-'Preserve Total: Smoothed and spatially normalised images preserve the total amount of signal from each region in the images (smw*). Areas that are expanded during warping are correspondingly reduced in intensity. This option is suggested for VBM.'
+'Preserve Amount: Smoothed and spatially normalised images preserve the total amount of signal from each region in the images (smw*). Areas that are expanded during warping are correspondingly reduced in intensity. This option is suggested for VBM.'
+''
+'Preserve Labels: This is intended for warping label images. While it is quite slow to run, it is intended to give more accurately warped categorical data.'
 }';
 preserve.labels = {
                    'Preserve Concentrations (no "modulation")'
                    'Preserve Amount ("modulation")'
+                   'Preserve Labels (categorical data)'
 }';
-preserve.values = {0 1};
+preserve.values = {0 1 2};
 preserve.val    = {0};
 % ---------------------------------------------------------------------
 
@@ -436,11 +443,9 @@ conf         = exbranch('Deformations','defs',{comp,output});
 conf.prog    = @spm_deformations;
 conf.vout    = @vout;
 conf.help    = hsummary;
-return;
-%_______________________________________________________________________
 
-%_______________________________________________________________________
 
+%==========================================================================
 function vo = vout(job)
 vo = [];
 savedef   = false;
@@ -449,28 +454,28 @@ savesurf  = false;
 savejac   = false;
 for i=1:numel(job.out)
     out = job.out{i};
-    if isfield(out,'savedef') && ~savedef,
+    if isfield(out,'savedef') && ~savedef
         savedef = true;
         if isempty(vo), vo = cfg_dep; else vo(end+1) = cfg_dep; end
         vo(end).sname      = 'Deformation';
         vo(end).src_output = substruct('.','def');
         vo(end).tgt_spec   = cfg_findspec({{'filter','nifti'}});
     end
-    if (isfield(out,'pull') || isfield(out,'push')) && ~saveimage,
+    if (isfield(out,'pull') || isfield(out,'push')) && ~saveimage
         saveimage = true;
         if isempty(vo), vo = cfg_dep; else vo(end+1) = cfg_dep; end
         vo(end).sname      = 'Warped Images';
         vo(end).src_output = substruct('.','warped');
         vo(end).tgt_spec   = cfg_findspec({{'filter','image'}});
     end
-    if isfield(out,'surf') && ~savesurf,
+    if isfield(out,'surf') && ~savesurf
         savesurf = true;
         if isempty(vo), vo = cfg_dep; else vo(end+1) = cfg_dep; end
         vo(end).sname      = 'Warped Surfaces';
         vo(end).src_output = substruct('.','surf');
         vo(end).tgt_spec   = cfg_findspec({{'filter','mesh'}});
     end
-    if isfield(out,'savejac') && ~savejac,
+    if isfield(out,'savejac') && ~savejac
         savejac = true;
         if isempty(vo), vo = cfg_dep; else vo(end+1) = cfg_dep; end
         vo(end).sname      = 'Jacobian';
@@ -478,10 +483,9 @@ for i=1:numel(job.out)
         vo(end).tgt_spec   = cfg_findspec({{'filter','image'}});
     end
 end
-return;
-%_______________________________________________________________________
 
-%_______________________________________________________________________
+
+%==========================================================================
 function entry_item = entry(name, tag, strtype, num)
 entry_item         = cfg_entry;
 entry_item.name    = name;

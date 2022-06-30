@@ -1,5 +1,5 @@
 /*
- * $Id: spm_mapping.c 6549 2015-09-11 15:37:48Z guillaume $
+ * $Id: spm_mapping.c 7568 2019-04-09 11:03:59Z guillaume $
  * John Ashburner
  */
 
@@ -17,8 +17,10 @@
 #include <windows.h>
 #include <memory.h>
 #if defined _FILE_OFFSET_BITS && _FILE_OFFSET_BITS == 64
+#ifdef _MSC_VER
 #define stat _stati64
 #define fstat _fstati64
+#endif
 #define open _open
 #define close _close
 #endif
@@ -71,7 +73,8 @@ static void get_map_dat(int i, const mxArray *ptr, MAPTYPE *maps)
 {
     mxArray *tmp;
     double *pr;
-    int num_dims, j, t, dtype = 0;
+    int num_dims, j, dtype = 0;
+    long long t;
     const mwSize *dims;
     unsigned char *dptr;
 
@@ -133,14 +136,14 @@ static void get_map_dat(int i, const mxArray *ptr, MAPTYPE *maps)
             mexErrMsgTxt("Wrong sized dt.");
         }
         pr = mxGetPr(tmp);
-        if (!((pr[0] ==   2) && (dtype == SPM_UNSIGNED_CHAR) || 
-              (pr[0] == 256) && (dtype == SPM_SIGNED_CHAR) || 
-              (pr[0] ==   4) && (dtype == SPM_SIGNED_SHORT) || 
-              (pr[0] == 512) && (dtype == SPM_UNSIGNED_SHORT) || 
-              (pr[0] ==   8) && (dtype == SPM_SIGNED_INT) || 
-              (pr[0] == 768) && (dtype == SPM_UNSIGNED_INT) || 
-              (pr[0] ==  16) && (dtype == SPM_FLOAT) || 
-              (pr[0] ==  64) && (dtype == SPM_DOUBLE)))
+        if (!(((pr[0] ==   2) && (dtype == SPM_UNSIGNED_CHAR)) || 
+              ((pr[0] == 256) && (dtype == SPM_SIGNED_CHAR)) || 
+              ((pr[0] ==   4) && (dtype == SPM_SIGNED_SHORT)) || 
+              ((pr[0] == 512) && (dtype == SPM_UNSIGNED_SHORT)) || 
+              ((pr[0] ==   8) && (dtype == SPM_SIGNED_INT)) || 
+              ((pr[0] == 768) && (dtype == SPM_UNSIGNED_INT)) || 
+              ((pr[0] ==  16) && (dtype == SPM_FLOAT)) || 
+              ((pr[0] ==  64) && (dtype == SPM_DOUBLE))))
         {
             mexPrintf("dtype=%d and dt=%d\n",dtype,(int)fabs(pr[0]));
             free_maps(maps,i);
@@ -474,7 +477,8 @@ static MAPTYPE *get_maps_struct(const mxArray *ptr, int *n)
 
 static MAPTYPE *get_maps_3dvol(const mxArray *ptr, int *n)
 {
-    int num_dims, jj, t, dtype = 0;
+    int num_dims, jj, dtype = 0;
+    long long t;
     const mwSize *dims;
     MAPTYPE *maps;
     unsigned char *dptr;

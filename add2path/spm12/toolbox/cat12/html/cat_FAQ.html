@@ -48,10 +48,10 @@
             <li><a href="#VBMofGMT">Is there a thickness map that allows a voxel-based analysis?</a></li>
             <li><a href="#7Tesla">Known problems in ultra high-field data (7 Tesla)</a></li>
             <li><a href="#inv">Preprocessing of T2/PD data</a></li>
-            <li><a href="#MT">Preprocessing of special contrasts (e.g. MT, T1syn, R1)</a></li>
+            <li><a href="#MT">Preprocessing of specific contrasts (e.g. MT, T1syn, R1)</a></li>
           </ul>
           </br>
-        <li><h4><a href="#QA">Quality control / assurance</a></h4></li>
+        <li><h4><a href="#QA">Quality control</a></h4></li>
           <ul>
             <li><a href="#lowQRscans">Some of my images get a low rating - can I use them anyway?</a></li>
             <li><a href="#lowQRsample">My whole data get a low average rating - can I use it?</a></li>
@@ -182,7 +182,7 @@
             Similar to the sulci also gyri especially their crones can be blurred.
             Besides low spatial resolution (more blurring) and image quality, especially the age plays an important role.
             In very young subjects the WM is often not clearly visible and leads to very thick cortex and in poor cases to broken gyri. 
-            But also in very old subject problems can occur by strong WM atrophy and WM hyperintensities. 
+            But also in very old subject problems can occur by strong WM atrophy and WM hyperintensities (see <a href="cat_methods_WMHC.html">WMHC</a>). 
           </p>
           <p style="text-align:center;">
             <img src="images/Gyral_blurring.png" width=90% height=auto alt="Blurred/broken gyri" >
@@ -223,7 +223,7 @@
           </p>
           -->
           <p>
-            In particular, in case of GM&ltWM&lt=CSF intensity the correct classification of sulcal CSF is problematic because of the <it>a-priory</it> AMAP segmentation and the partial volume effect (PVE).  CAT uses a special region growing process to differentiate between CSF and WM voxels but this process is relative error-prone in that case.  
+            In particular, in case of GM&ltWM&lt=CSF intensity the correct classification of sulcal CSF is problematic because of the <it>a-priory</it> AMAP segmentation and the partial volume effect (PVE).  CAT uses a specific region growing process to differentiate between CSF and WM voxels but this process is relative error-prone in that case.  
             The following figure shows the segmentation and surface reconstruction of a T2 TSE scan of a neonate that shows classification problems of sulcal CSF in the SPM but not the CAT segmentation.  For this preprocessing the standard TPM was used because the available TPMs (e.g. MANTIS TB) does not fit to the 6 class SPM12 standard TPM.  Moreover, it was necessary to reduce the strength of the SPM inhomogeneity correction (biasstr = 0.1) to avoid false corrections. 
           </p>
           <p style="text-align:center;">
@@ -232,7 +232,7 @@
           </br></br>
         </li>
         <li>
-          <h4 id="MT">Preprocessing of special contrasts (e.g. MT, T1syn, R1)</h4>
+          <h4 id="MT">Preprocessing of specific contrasts (e.g. MT, T1syn, R1)</h4>
           <p>
             Synthetical contrast such as MT, T1sys, or R1 often have only a very light bias.  Although, we found the default biasstr value work very well in our test cases, it is possible to reduce the amount of bias-correction to a low non-zero value (e.g. biasstr = eps to 0.2).  
           </p>
@@ -252,16 +252,16 @@
      
      
      
-      <h3 id="QA">Quality control / assurance</h3>
+      <h3 id="QA">Quality control</h3>
       <ul>
         <li>
           <h4 id="lowQRscans">Some of my images get a low rating - can I use them anyway?</h4>
           <p>
             Outliers of image quality are often caused by artifacts e.g. by movements.  Increased noise is also possible for elderly subjects with WMHs, where the fibers become visible and increase local variance. <br />
             Best praxis is to remove strong outliers (e.g. > 2 standard deviations, but not necessarily), if the problems depend on the image quality and not other subject properties.  
-            If you have only a small number of images, you can also evaluate the segmentations in subject space by checking the <i>cat12*report.ps</i> or by using the <i>Display one slice for all images</i> tool.  
+            If you have only a small number of images, you can also evaluate the segmentations in subject space by checking the <i>cat12*report.ps</i> or by using the <i>Display slices</i> tool.  
             Use the <a class="function" href="matlab:spm_jobman('interactive','','spm.tools.cat.tools.showslice');">Check data homogeneity</a> to proof that the segmentation of these subjects were correct. In the plot outliers from the sample are usually isolated from the majority of images which are clustered around the sample mean. However, this will not always mean that you have to remove these data from your sample, but should be checked more carefully.<br />
-            Have a look to the <a href="cat_methods_QA.html">quality assurance methods</a> for further information. 
+            Have a look to the <a href="cat_methods_QA.html">quality control methods</a> for further information. 
           </p>
         </li>
         <li>
@@ -270,7 +270,7 @@
             Yes, but you have to check for any preprocessing problems. Low rating depends on low resolution and/or higher noise/artifacts and is typical for very short sequences that are required e.g. for children.  
             Increased noise is also possible for elderly subjects with WMHs, where the fibers become visible and increase local variance.  
             Overall segmentation and reconstruction quality will be lower than for high quality data (Kappa < 0.9) and you have to check if the cortex was segmented correctly.<br />
-            Use the <i>Check data homogeneity</i> and/or have a look to the segmentations in subject space by checking the <i>cat12*report.ps</i> or by using the <i>Display one slice for all images</i> tool.
+            Use the <i>Check data homogeneity</i> and/or have a look to the segmentations in subject space by checking the <i>cat12*report.ps</i> or by using the <i>Display slices</i> tool.
           </p>
         </li>
         <li>
@@ -285,7 +285,7 @@
         <li>
           <h4>Cat processing errors</h4>
           <p>
-            Please send us an email with the "cat_*.xml" of the failed image, that contain error informations. 
+            Please send us an email with the "cat_*.xml" of the failed image, that contain error information. 
           </p>
         </li>
       </ul>

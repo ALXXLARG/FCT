@@ -10,9 +10,14 @@ function MODIFIEDSTR = cat_io_strrep(ORIGSTR,OLDSUBSTR,NEWSUBSTR)
 % new_claimB = cat_io_strrep(claim,{'good','bad'},{'great','acceptable'})
 %
 % See also strrep, strfind, regexprep.
-% _______________________________________________________________________
-% Robert Dahnke
-% $Id: cat_io_strrep.m 1017 2016-09-23 05:55:23Z dahnke $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_io_strrep.m 1791 2021-04-06 09:15:54Z gaser $
 
   if nargin==0, help cat_io_strrep; return; end
 
@@ -31,7 +36,7 @@ function MODIFIEDSTR = cat_io_strrep(ORIGSTR,OLDSUBSTR,NEWSUBSTR)
           end
         else
           error('cat_io_strrep:input',...
-            'If multiple new stringswere used, their number must be equal to the number of old strings.\n'); 
+            'If multiple new strings were used, their number must be equal to the number of old strings.\n'); 
         end
       else
         MODIFIEDSTR = ORIGSTR; 

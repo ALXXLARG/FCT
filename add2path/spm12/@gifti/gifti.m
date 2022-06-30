@@ -8,7 +8,7 @@ function this = gifti(varargin)
 % Copyright (C) 2008 Wellcome Trust Centre for Neuroimaging
 
 % Guillaume Flandin
-% $Id: gifti.m 6601 2015-11-19 13:55:32Z guillaume $
+% $Id: gifti.m 7676 2019-10-22 10:19:29Z guillaume $
 
 switch nargin
     
@@ -31,6 +31,11 @@ switch nargin
                         struct('type','.','subs',ff{ia(i)}),...
                         varargin{1}.(c{i}));
                 end
+                if isfield(varargin{1},'mat')
+                    this = subsasgn(this,...
+                        struct('type','.','subs','mat'),...
+                        varargin{1}.mat);
+                end
             elseif isempty(setxor(fieldnames(varargin{1}),...
                     {'metadata','label','data'}))
                 this = class(varargin{1},'gifti');
@@ -41,7 +46,7 @@ switch nargin
         elseif ishandle(varargin{1})
             this = struct('vertices',get(varargin{1},'Vertices'), ...
                           'faces',   get(varargin{1},'Faces'));
-            if ~isempty(get(varargin{1},'FaceVertexCData'));
+            if ~isempty(get(varargin{1},'FaceVertexCData'))
                   this.cdata = get(varargin{1},'FaceVertexCData');
             end
             this = gifti(this);
@@ -51,6 +56,18 @@ switch nargin
             this = subsasgn(this,...
                 struct('type','.','subs','cdata'),...
                 varargin{1});
+            
+        elseif iscell(varargin{1}) && numel(varargin{1}) == 1 && ...
+            isnumeric(varargin{1}{1})
+            this = gifti;
+            for i=1:size(varargin{1}{1},2)
+                this.data{i}.metadata = struct([]);
+                this.data{i}.space    = [];
+                this.data{i}.attributes.Intent = 'NIFTI_INTENT_NONE';
+                this.data{i}.attributes.DataType = 'NIFTI_TYPE_FLOAT32';
+                this.data{i}.attributes.Dim = size(varargin{1}{1},1);
+                this.data{i}.data     = single(varargin{1}{1}(:,i));
+            end
             
         elseif ischar(varargin{1})
             if size(varargin{1},1)>1
@@ -64,11 +81,28 @@ switch nargin
                 catch
                     error('[GIFTI] Loading of file %s failed.', varargin{1});
                 end
-            elseif strcmpi(e,'.asc') || strcmpi(e,'.srf')
+            elseif ismember(lower(e),{'.asc','.srf','.mgh','.mgz','.pial',...
+                    '.white','.inflated','.nofix','.orig','.smoothwm',...
+                    '.sphere','.reg','.surf','.curv','.area','.sulc'})
                 this = read_freesurfer_file(varargin{1});
                 this = gifti(this);
             elseif strcmpi(e,'.vtk')
                 this = mvtk_read(varargin{1});
+                this = gifti(this);
+            elseif strcmpi(e,'.obj')
+                this = obj_read(varargin{1});
+                this = gifti(this);
+            elseif strcmpi(e,'.ply')
+                this = ply_read(varargin{1});
+                this = gifti(this);
+            elseif strcmpi(e,'.off')
+                this = off_read(varargin{1});
+                this = gifti(this);
+            elseif strcmpi(e,'.stl')
+                this = stl_read(varargin{1});
+                this = gifti(this);
+            elseif strcmpi(e,'.mz3')
+                this = mz3_read(varargin{1});
                 this = gifti(this);
             else
                 this = read_gifti_file(varargin{1},giftistruct);

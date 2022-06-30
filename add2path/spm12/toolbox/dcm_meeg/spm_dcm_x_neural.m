@@ -12,7 +12,7 @@ function [x,f,h] = spm_dcm_x_neural(P,model)
 % Copyright (C) 2008 Wellcome Trust Centre for Neuroimaging
 
 % Karl Friston
-% $Id: spm_dcm_x_neural.m 6855 2016-08-06 10:06:35Z karl $
+% $Id: spm_dcm_x_neural.m 7679 2019-10-24 15:54:07Z spm $
 
 % paramteric state equation
 %--------------------------------------------------------------------------
@@ -65,7 +65,7 @@ switch lower(model)
         
         f  = 'spm_fx_sep';
         
-    % Linear in states – canonical microcircuit
+    % Linear in states - canonical microcircuit
     %======================================================================
     case{'cmc'}
         
@@ -78,7 +78,7 @@ switch lower(model)
         f  = 'spm_fx_cmc';
         %%% f  = 'spm_fx_cmc_2014'; %%%
         
-    % Linear in states – canonical microcircuit with plasticity
+    % Linear in states - canonical microcircuit with plasticity
     %======================================================================
     case{'tfm'}
         
@@ -160,7 +160,32 @@ switch lower(model)
         x  = spm_x_mfm(P);
         f  = 'spm_fx_mfm';
         
-            % Mean field model (nonlinear in states) - with covariance
+    
+    % Basal ganglia circuit (linear in states) - with covariance
+    %======================================================================
+    case{'bgt'}
+        
+        % inital states and model
+        %------------------------------------------------------------------
+        n = length(1);
+        m = 10;
+        x = sparse(n,m);
+        
+        f = 'spm_fx_bgt';        
+        
+    % Linear in states - motor microcircuit
+    %======================================================================
+    case{'mmc'}
+        
+        % inital states
+        %------------------------------------------------------------------
+        n  = length(P.A{1});                          % number of sources
+        m  = 8;                                       % number of states
+        x  = sparse(n,m);
+        
+        f  = 'spm_fx_mmc';
+        
+    % Null model - of Jacabian (linear in states)
     %======================================================================
     case{'null'}
         

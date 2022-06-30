@@ -1,10 +1,11 @@
-function cat_sanlm(in, v, f)
-% FORMAT cat_sanlm(in, v, f)
+function cat_sanlm(in, v, f, rician)
+% FORMAT cat_sanlm(in, v, f, rician)
 % 
 % Spatial Adaptive Non Local Means Denoising Filter
 %
 % v - size of search volume (M in paper)
 % f - size of neighborhood (d in paper)
+% rician - use rician noise distribution
 %
 % *                          Details on SANLM filter                        
 % ***************************************************************************
@@ -17,11 +18,16 @@ function cat_sanlm(in, v, f)
 % *                                                                         *
 % ***************************************************************************/
 %
+% ______________________________________________________________________
 %
-% Christian Gaser
-% $Id: cat_sanlm.m 772 2015-11-18 11:02:01Z gaser $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_sanlm.m 1791 2021-04-06 09:15:54Z gaser $
 
-rev = '$Rev: 772 $';
+rev = '$Rev: 1791 $';
 
 disp('Compiling cat_sanlm.c')
 
@@ -31,6 +37,6 @@ cd(pth);
 mex -O cat_sanlm.c sanlm_float.c 
 cd(p_path);
 
-cat_sanlm(in, v, f);
+cat_sanlm(in, v, f, rician);
 
 return

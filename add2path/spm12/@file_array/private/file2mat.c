@@ -1,5 +1,5 @@
 /*
- * $Id: file2mat.c 6618 2015-12-01 16:25:38Z spm $
+ * $Id: file2mat.c 7568 2019-04-09 11:03:59Z guillaume $
  * John Ashburner
  */
 
@@ -26,8 +26,10 @@ http://www.mathworks.com/company/newsletters/digest/mar04/memory_map.html
 HANDLE hFile, hMapping;
 typedef char *caddr_t;
 #if defined _FILE_OFFSET_BITS && _FILE_OFFSET_BITS == 64
+#ifdef _MSC_VER
 #define stat _stati64
 #define fstat _fstati64
+#endif
 #define open _open
 #define close _close
 #if defined _MSC_VER
@@ -47,7 +49,7 @@ typedef char *caddr_t;
 http://en.wikipedia.org/wiki/Page_(computing)#Determining_the_page_size_in_a_program
 http://msdn.microsoft.com/en-us/library/aa366763(VS.85).aspx
 */
-int page_size()
+static int page_size()
 {
 int size = 0;
 
@@ -67,8 +69,8 @@ return size;
 
 static long long icumprod[MXDIMS], ocumprod[MXDIMS];
 
-static void get_1_sat(mwSize ndim, mwSize idim[], int *iptr[], unsigned char idat[],
-        mwSize odim[], unsigned char odat[], int indi, int indo)
+static void get_1_sat(mwSize ndim, mwSize idim[], unsigned long long *iptr[], unsigned char idat[],
+        mwSize odim[], unsigned char odat[], unsigned long long indi, unsigned long long indo)
 {
     mwIndex i;
     if (ndim == 0)
@@ -87,13 +89,13 @@ static void get_1_sat(mwSize ndim, mwSize idim[], int *iptr[], unsigned char ida
     }
 }
 
-void get_1(mwSize ndim, mwSize idim[], int *iptr[], unsigned char idat[],
+static void get_1(mwSize ndim, mwSize idim[], unsigned long long *iptr[], unsigned char idat[],
            mwSize odim[], unsigned char odat[])
 {
     get_1_sat(ndim, idim, iptr, idat, odim, odat, 0, 0);
 }
 
-void get_8(mwSize ndim, mwSize idim[], int *iptr[], unsigned char idat[],
+static void get_8(mwSize ndim, mwSize idim[], unsigned long long *iptr[], unsigned char idat[],
            mwSize odim[], unsigned char odat[])
 {
     mwIndex i;
@@ -110,7 +112,7 @@ void get_8(mwSize ndim, mwSize idim[], int *iptr[], unsigned char idat[],
     }
 }
 
-void get_16(mwSize ndim, mwSize idim[], int *iptr[], unsigned short idat[],
+static void get_16(mwSize ndim, mwSize idim[], unsigned long long *iptr[], unsigned short idat[],
             mwSize odim[], unsigned short odat[])
 {
     mwIndex i;
@@ -127,7 +129,7 @@ void get_16(mwSize ndim, mwSize idim[], int *iptr[], unsigned short idat[],
     }
 }
 
-void get_32(mwSize ndim, mwSize idim[], int *iptr[], unsigned int idat[],
+static void get_32(mwSize ndim, mwSize idim[], unsigned long long *iptr[], unsigned int idat[],
             mwSize odim[], unsigned int odat[])
 {
     mwIndex i;
@@ -144,7 +146,7 @@ void get_32(mwSize ndim, mwSize idim[], int *iptr[], unsigned int idat[],
     }
 }
 
-void get_64(mwSize ndim, mwSize idim[], int *iptr[], unsigned long long idat[],
+static void get_64(mwSize ndim, mwSize idim[], unsigned long long *iptr[], unsigned long long idat[],
             mwSize odim[], unsigned long long odat[])
 {
     mwSize i;
@@ -161,7 +163,7 @@ void get_64(mwSize ndim, mwSize idim[], int *iptr[], unsigned long long idat[],
     }
 }
 
-void get_w8(mwSize ndim, mwSize idim[], int *iptr[], unsigned char idat[],
+static void get_w8(mwSize ndim, mwSize idim[], unsigned long long *iptr[], unsigned char idat[],
             mwSize odim[], unsigned char odat_r[], unsigned char odat_i[])
 {
     mwIndex i;
@@ -183,7 +185,7 @@ void get_w8(mwSize ndim, mwSize idim[], int *iptr[], unsigned char idat[],
     }
 }
 
-void get_w16(mwSize ndim, mwSize idim[], int *iptr[], unsigned short idat[],
+static void get_w16(mwSize ndim, mwSize idim[], unsigned long long *iptr[], unsigned short idat[],
              mwSize odim[], unsigned short odat_r[], unsigned short odat_i[])
 {
     mwIndex i;
@@ -205,7 +207,7 @@ void get_w16(mwSize ndim, mwSize idim[], int *iptr[], unsigned short idat[],
     }
 }
 
-void get_w32(mwSize ndim, mwSize idim[], int *iptr[], unsigned int idat[],
+static void get_w32(mwSize ndim, mwSize idim[], unsigned long long *iptr[], unsigned int idat[],
              mwSize odim[], unsigned int odat_r[], unsigned int odat_i[])
 {
     mwIndex i;
@@ -227,7 +229,7 @@ void get_w32(mwSize ndim, mwSize idim[], int *iptr[], unsigned int idat[],
     }
 }
 
-void get_w64(mwSize ndim, mwSize idim[], int *iptr[], unsigned long long idat[],
+static void get_w64(mwSize ndim, mwSize idim[], unsigned long long *iptr[], unsigned long long idat[],
              mwSize odim[], unsigned long long odat_r[], unsigned long long odat_i[])
 {
     mwIndex i;
@@ -249,10 +251,10 @@ void get_w64(mwSize ndim, mwSize idim[], int *iptr[], unsigned long long idat[],
     }
 }
 
-void swap8(long long n, unsigned char d[])
+static void swap8(long long n, unsigned char d[])
 { /* DO NOTHING */}
 
-void swap16(long long n, unsigned char d[])
+static void swap16(long long n, unsigned char d[])
 {
     unsigned char tmp, *de;
     for(de=d+2*n; d<de; d+=2)
@@ -261,7 +263,7 @@ void swap16(long long n, unsigned char d[])
     }
 }
 
-void swap32(long long n, unsigned char d[])
+static void swap32(long long n, unsigned char d[])
 {
     unsigned char tmp, *de;
     for(de=d+4*n; d<de; d+=4)
@@ -271,7 +273,7 @@ void swap32(long long n, unsigned char d[])
     }
 }
 
-void swap64(long long n, unsigned char d[])
+static void swap64(long long n, unsigned char d[])
 {
     unsigned char tmp, *de;
     for(de=d+8*n; d<de; d+=8)
@@ -292,7 +294,7 @@ typedef struct dtype {
     int channels;
 } Dtype;
 
-Dtype table[] = {
+static Dtype table[] = {
 {   1,get_1  , swap8 , mxLOGICAL_CLASS, 1,1},
 {   2,get_8  , swap8 , mxUINT8_CLASS  , 8,1},
 {   4,get_16 , swap16, mxINT16_CLASS  ,16,1},
@@ -322,7 +324,7 @@ typedef struct mtype {
 } MTYPE;
 
 #ifdef SPM_WIN32
-void werror(char *where, DWORD last_error)
+static void werror(char *where, DWORD last_error)
 {
     char buf[512];
     char s[1024];
@@ -340,7 +342,7 @@ void werror(char *where, DWORD last_error)
     return;
 }
 #else
-void werror(char *where, int last_error)
+static void werror(char *where, int last_error)
 {
     char s[1024];
     
@@ -350,7 +352,7 @@ void werror(char *where, int last_error)
 }
 #endif
 
-void do_unmap_file(MTYPE *map)
+static void do_unmap_file(MTYPE *map)
 {
     int sts;
     if (map->addr)
@@ -368,7 +370,7 @@ void do_unmap_file(MTYPE *map)
     }
 }
 
-const double *getpr(const mxArray *ptr, const char nam[], int len, int *n)
+static const double *getpr(const mxArray *ptr, const char nam[], int len, int *n)
 {
     char s[128];
     mxArray *arr;
@@ -410,7 +412,7 @@ const double *getpr(const mxArray *ptr, const char nam[], int len, int *n)
     return (double *)mxGetData(arr);
 }
 
-void do_map_file(const mxArray *ptr, MTYPE *map)
+static void do_map_file(const mxArray *ptr, MTYPE *map)
 {
     int n;
     int i, dtype;
@@ -563,8 +565,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     void *idat;
     int i;
     mwSize odim[MXDIMS], *idim, ndim;
-    int *iptr[MXDIMS];
-    int one[1];
+    unsigned long long *iptr[MXDIMS];
+    unsigned long long one[1];
     one[0] = 1;
 
     if (nrhs<2 || nlhs>1) mexErrMsgTxt("Incorrect usage.");
@@ -582,13 +584,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     for(i=0;i<nrhs-1; i++)
     {
         int j;
-        if (!mxIsNumeric(prhs[i+1]) || !mxIsInt32(prhs[i+1]) || mxIsComplex(prhs[i+1]))
+        if (!mxIsNumeric(prhs[i+1]) || !mxIsInt64(prhs[i+1]) || mxIsComplex(prhs[i+1]))
         {
             do_unmap_file(&map);
-            mexErrMsgTxt("Indices must be int32.");
+            mexErrMsgTxt("Indices must be int64.");
         }
         odim[i] = mxGetM(prhs[i+1])*mxGetN(prhs[i+1]);
-        iptr[i] = (int *)mxGetData(prhs[i+1]);
+        iptr[i] = (unsigned long long *)mxGetData(prhs[i+1]);
         for(j=0; j<odim[i]; j++)
             if (iptr[i][j]<1 || iptr[i][j]>((i<ndim)?idim[i]:1))
             {
@@ -625,13 +627,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     if (map.dtype->channels == 1)
     {
         plhs[0] = mxCreateNumericArray(ndim,odim,map.dtype->clss,mxREAL);
-#ifdef SPM_WIN32
+#ifdef _MSC_VER
         /* https://msdn.microsoft.com/en-us/library/windows/desktop/aa366801.aspx */
         __try
         {
 #endif
             map.dtype->func(ndim-1, idim, iptr, idat, odim, mxGetData(plhs[0]));
-#ifdef SPM_WIN32
+#ifdef _MSC_VER
         }
         __except(GetExceptionCode()==EXCEPTION_IN_PAGE_ERROR ?
             EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)

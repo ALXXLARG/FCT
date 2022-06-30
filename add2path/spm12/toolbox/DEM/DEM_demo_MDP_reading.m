@@ -19,14 +19,14 @@ function MDP = DEM_demo_MDP_reading
 % level policy entails one of four saccadic eye movements to each quadrant
 % of the current page, where it will sample a particular grapheme.
 %
-% This provides a rough simulation of reading – that can be made more
+% This provides a rough simulation of reading - that can be made more
 % realistic by terminating first level active inference, when there can be
 % no further increase in expected free energy (i.e., all uncertainty about
 % the current word has been resolved). The subsequent inferred hidden
 % states then become the outcome for the level above.
 %
 % To illustrate the schemes biological plausibility, one can change the
-% agent’s prior beliefs and repeat the reading sequence under violations of
+% agent's prior beliefs and repeat the reading sequence under violations of
 % either local (whether the graphemes are flipped vertically) or globally
 % (whether the sentence is surprising) expectations. This produces a
 % mismatch negativity (MMN) under local violations) and a MMN with a
@@ -37,7 +37,7 @@ function MDP = DEM_demo_MDP_reading
 % Copyright (C) 2005 Wellcome Trust Centre for Neuroimaging
  
 % Karl Friston
-% $Id: DEM_demo_MDP_reading.m 6866 2016-09-05 09:19:42Z karl $
+% $Id: DEM_demo_MDP_reading.m 7679 2019-10-24 15:54:07Z spm $
  
 % set up and preliminaries: first level
 %==========================================================================
@@ -125,8 +125,8 @@ mdp.D = D;                      % prior over initial states
  
 mdp.Aname = {'what','where'};
 mdp.Bname = {'what','where','flip','flip'};
-mdp.alpha = 4;
 mdp.chi   = 1/64;
+mdp.tau   = 2;
  
 clear A B D
  
@@ -242,7 +242,7 @@ mdp.B = B;                      % transition probabilities
 mdp.C = C;                      % preferred outcomes
 mdp.D = D;                      % prior over initial states
 mdp.s = [1 1 1]';               % initial state
- 
+
 mdp.Aname   = {'picture','where','feedback'};
 mdp.Bname   = {'story','where','decision'};
 mdp         = spm_MDP_check(mdp);

@@ -36,12 +36,12 @@ function [Yb,Yl1] = cat_main_gcut_DEV(Ysrc,Yb,Ycls,Yl1,YMF,vx_vol,opt)
 % 
 % ______________________________________________________________________
 %
-%   Robert Dahnke (robert.dahnke@uni-jena.de)
-%   Structural Brain Mapping Group (http://dbm.neuro.uni-jena.de/)
-%   Department of Neurology
-%   University Jena
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
 % ______________________________________________________________________
-% $Id: cat_main_gcut_DEV.m 1072 2016-11-09 15:01:16Z dahnke $
+% $Id: cat_main_gcut_DEV.m 1791 2021-04-06 09:15:54Z gaser $
 
   LAB  = opt.LAB;
   NS   = @(Ys,s) Ys==s | Ys==s+1;

@@ -1,10 +1,10 @@
 function estimate = spm_cfg_dcm_est
 % SPM Configuration file for DCM estimation
 %__________________________________________________________________________
-% Copyright (C) 2008-2014 Wellcome Trust Centre for Neuroimaging
+% Copyright (C) 2008-2017 Wellcome Trust Centre for Neuroimaging
 
 % Guillaume Flandin & Peter Zeidman
-% $Id: spm_cfg_dcm_est.m 6735 2016-03-02 15:40:47Z peter $
+% $Id: spm_cfg_dcm_est.m 7479 2018-11-09 14:17:33Z peter $
 
 % -------------------------------------------------------------------------
 % dcmmat Select DCM_*.mat
@@ -103,7 +103,7 @@ output_single.help    = {['Creates a single group-level DCM file ' ...
 %--------------------------------------------------------------------------
 output_overwrite_gcm         = cfg_branch;
 output_overwrite_gcm.tag     = 'overwrite_gcm';
-output_overwrite_gcm.name    = 'Overwrite existing GCM_*.mat file';
+output_overwrite_gcm.name    = 'Overwrite existing GCM/DCM files';
 output_overwrite_gcm.val     = {};
 output_overwrite_gcm.help    = {['Overwrites existing group-level DCM file ' ...
                                  'with estimated models.']};
@@ -113,7 +113,7 @@ output_overwrite_gcm.help    = {['Overwrites existing group-level DCM file ' ...
 %--------------------------------------------------------------------------
 output_separate         = cfg_branch;
 output_separate.tag     = 'separate';
-output_separate.name    = 'Overwrite existing individual DCM files';
+output_separate.name    = 'Only save individual DCM files';
 output_separate.val     = {};
 output_separate.help    = {'Updated existing individual DCM.mat files'};
 
@@ -125,10 +125,20 @@ output.tag     = 'output';
 output.name    = 'Output';
 output.values  = { output_single output_overwrite_gcm output_separate };
 output.val     = { output_single };
-output.help    = {['Whether to create a single DCM file across all ' ...
-                       'subjects / models (default, required for second ' ...
-                       'level analysis) or just update the separate' ...
-                       'first-level DCM files.']};
+output.help    = {'How to store the estimated DCMs. The options are: ' ...
+                  ['1. Create group GCM_*.mat file - this will create a single '...
+                   'file containing a cell array, with one row per subject ' ...
+                   'and one column per DCM, containing the filenames of ' ...
+                   'the DCMs. The original DCM files will be overwritten ' ...
+                   'with the outcome of the estimation. ' ...
+                   '(Alternatively, if the input is a GCM file containing ' ...
+                   'DCM structures rather than filenames, then the output ' ...
+                   'will also be an array containing DCM structures.)'] ...
+                  ['2. Overwrite existing GCM/DCM files - as above but with ' ...
+                   'with an existing GCM filename.'] ...
+                  ['3. Only save individual DCM files - does not change the ' ...
+                   'GCM file and simply overwrites each subject''s DCM ' ...
+                   'with estimated values.']};
 
 % -------------------------------------------------------------------------
 % way Choice of ways to select DCMs (nested models)
@@ -189,6 +199,7 @@ fmri         = cfg_branch;
 fmri.tag     = 'fmri';
 fmri.name    = 'MRI specific options';
 fmri.val     = {fmri_analysis};
+fmri.help    = {'MRI specific options'};
                  
 % -------------------------------------------------------------------------
 % estimate Estimate
@@ -210,7 +221,7 @@ estimate.vout = @vout_dcm;
 est         = cfg_choice; 
 est.tag     = 'est';
 est.name    = 'DCM estimation';
-est.help    = {'Estimation of DCM models'};
+est.help    = {'Estimation of Dynamic Causal Models.'};
 est.values  = { estimate };
 
 %==========================================================================
@@ -257,11 +268,6 @@ else
     error('Unknown output type');
 end
 
-% Validate options
-if (input_type == INPUT_GCM && output_type == OUTPUT_DCM)
-    error('If the input is a single GCM file, the output must be too');
-end
-
 if (output_type == OUTPUT_GCM_OVERWRITE && input_type ~= INPUT_GCM)
     error('To overwrite an existing GCM file, the input must be a GCM');
 end
@@ -280,10 +286,7 @@ switch input_type
             end
 
             P(:,m) = dcms.model(m).dcmmat;
-        end
-
-        % Load all models into memory
-        GCM = spm_dcm_load(P);    
+        end 
     
     case INPUT_DCM_BY_SUBJECT
         ns  = length(dcms.subj);
@@ -299,25 +302,56 @@ switch input_type
             P(s,:) = dcms.subj(s).dcmmat';
         end
 
-        % Load all models into memory
-        GCM = spm_dcm_load(P);    
-    
     case INPUT_GCM
         GCM = load(dcms.gcmmat{1});
         GCM = GCM.GCM;
         ns = size(GCM,1);
         nm = size(GCM,2);
+        
+        if ischar(GCM{1})
+            P = GCM;
+        else
+            P = '';
+        end
+end
+
+% Validate
+if output_type == OUTPUT_DCM && isempty(P)
+    error(['Cannot save individual DCM files when the input is a GCM ' ...
+           'array of DCM structures']);
+end
+
+% Load all models into memory
+if ~isempty(P)
+    GCM = spm_dcm_load(P);   
 end
 
 % Set timeseries or CSD estimation (fMRI)
 for s = 1:ns
     for m = 1:nm
         if strcmpi(job.fmri.analysis,'CSD')
-            GCM{s,m}.options.analysis = 'CSD';
+            GCM{s,m}.options.analysis   = 'CSD';
+            GCM{s,m}.options.induced    = 1;
+            GCM{s,m}.options.stochastic = 0;            
         else
             if isfield(GCM{s,m},'options') && isfield(GCM{s,m},'analysis')
                 GCM{s,m}.options = rmfield(GCM{s,m}.options,'analysis');
             end
+            GCM{s,m}.options.induced = 0;
+        end
+    end
+end
+
+% Check that models 2-N are nested forms of the full model
+if nm > 1 && (est_type == EST_FULL_BMR || est_type == EST_FULL_BMR_PEB)
+    idx1 = spm_find_pC(GCM{1});
+    for m = 2:nm
+        idx = spm_find_pC(GCM{1,m});
+        if any(setdiff(idx,idx1))
+            error(['Model %d is not a nested model of model 1. This is ' ...
+                  'required for Bayesian Model Reduction (BMR). Please ' ...
+                  'introduce a full model as Model 1, or switch estimation ' ...
+                  'type to ''full'''],m);
         end
     end
 end
@@ -338,51 +372,58 @@ switch est_type
         % Do nothing
 end
 
-% Save
+% Save individual DCM .mat files if requested
+if ~isempty(P) && (est_type ~= EST_NONE)
+    for s = 1:ns
+        for m = 1:nm
+            DCM = GCM{s,m};
+            F   = DCM.F;
+            Ep  = DCM.Ep;
+            Cp  = DCM.Cp;
+            save(P{s,m}, 'DCM', 'F', 'Ep', 'Cp', ...
+                spm_get_defaults('mat.format'));
+        end
+    end
+end
+
+% If filenames were provided, set the GCM to contain the filenames
+if ~isempty(P)
+    GCM = P; %#ok<NASGU>
+end
+
+% Save GCM
 if output_type == OUTPUT_GCM_NEW
-    % Create single mat file
+    % Create single GCM mat file
     dir  = job.output.single.dir{1};
-    name = ['GCM_' job.output.single.name '.mat'];
-    
+    name = ['GCM_' job.output.single.name '.mat'];        
     filename = fullfile(dir,name);
-    save(filename,'GCM');
+    save(filename,'GCM', spm_get_defaults('mat.format'));
     
     out.gcmmat = {filename};
 elseif output_type == OUTPUT_GCM_OVERWRITE
     % Update existing gcm file
-    filename = dcms.gcmmat{1};
-    
-    save(filename,'GCM');
+    filename = dcms.gcmmat{1};    
+    save(filename,'GCM', spm_get_defaults('mat.format'));
     
     out.gcmmat = {filename};
-else
-    % Update existing mat files
-    if (est_type ~= EST_NONE)
-        for s = 1:ns
-            for m = 1:nm
-                DCM = GCM{s,m};
-                F   = DCM.F;
-                Ep  = DCM.Ep;
-                Cp  = DCM.Cp;
-                save(P{s,m}, 'DCM', 'F', 'Ep', 'Cp');
-            end
-        end
-    end
-    out.dcmmat = P;
+end
+
+if ~isempty(P)
+    out.dcmmat = P(:,1);
 end
 
 %==========================================================================
 function dep = vout_dcm(job)
 %==========================================================================
+dep(1)            = cfg_dep;
+dep(1).sname      = 'DCM mat File(s) - full models';
+dep(1).src_output = substruct('.','dcmmat');
+dep(1).tgt_spec   = cfg_findspec({{'filter','mat','strtype','e'}});
+
 if isfield(job.output,'single') || ...
         isfield(job.output,'overwrite_gcm')
-    dep(1)            = cfg_dep;
-    dep(1).sname      = 'GCM mat File(s)';
-    dep(1).src_output = substruct('.','gcmmat');
-    dep(1).tgt_spec   = cfg_findspec({{'filter','mat','strtype','e'}});
-else
-    dep(1)            = cfg_dep;
-    dep(1).sname      = 'DCM mat File(s)';
-    dep(1).src_output = substruct('.','dcmmat');
-    dep(1).tgt_spec   = cfg_findspec({{'filter','mat','strtype','e'}});
+    dep(2)            = cfg_dep;
+    dep(2).sname      = 'GCM mat File(s)';
+    dep(2).src_output = substruct('.','gcmmat');
+    dep(2).tgt_spec   = cfg_findspec({{'filter','mat','strtype','e'}});
 end

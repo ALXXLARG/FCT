@@ -1,4 +1,4 @@
-function cat_io_xml2csv(PD,FN,fname)
+function cat_io_xml2csv(PD,FN,filename)
 % ______________________________________________________________________
 %
 % Function to convert a set of cat*.xml-files to a common csv-file.
@@ -15,11 +15,13 @@ function cat_io_xml2csv(PD,FN,fname)
 %                  {'qa.SM.vol_rel_CGW'});
 %
 % ______________________________________________________________________
-% Robert Dahnke
-% Structural Brain Mapping Group
-% University Jena
 %
-% $Id: cat_io_xml2csv.m 767 2015-11-17 16:00:13Z gaser $
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_io_xml2csv.m 1791 2021-04-06 09:15:54Z gaser $
 %
 %#ok<*WNOFF,*WNON,*ASGLU>
 
@@ -96,8 +98,8 @@ function cat_io_xml2csv(PD,FN,fname)
   
   
   % filename
-  if ~exist('fname','var') || isempty(fname)
-    fname = fullfile(pwd,'cat12.csv');
+  if ~exist('filename','var') || isempty(filename)
+    filename = fullfile(pwd,'cat12.csv');
   end
   
   
@@ -111,8 +113,8 @@ function cat_io_xml2csv(PD,FN,fname)
   
   
   % save as csv-file
-  %cat_io_csv(fname,['xml-file' xmlH; Pff' xmlT]);
-  cat_io_csv(fname,[xmlH;xmlT]);
+  %cat_io_csv(filename,['xml-file' xmlH; Pff' xmlT]);
+  cat_io_csv(filename,[xmlH;xmlT]);
 
 end
 function [FNqa,FNqm,FNdb] = cat_io_xml2csv_defaultsfields

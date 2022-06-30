@@ -1,5 +1,5 @@
 /*
- * $Id: shoot_bsplines.c 4884 2012-09-03 13:33:17Z guillaume $
+ * $Id: shoot_bsplines.c 7685 2019-11-01 12:56:19Z john $
  * John Ashburner
  */
  
@@ -42,7 +42,7 @@ static int vol_coeffs(mwSize vdim[], float vol[], float c[], int d[], void (*spl
     double  p[4];
     float *cp;
     int np;
-    int i, j, k, n;
+    mwSize i, j, k, n;
     float f[10240];
 
     /* Check that dimensions don't exceed size of f */
@@ -61,7 +61,8 @@ static int vol_coeffs(mwSize vdim[], float vol[], float c[], int d[], void (*spl
     /* Deconvolve along the fastest dimension (X) */
     if (d[0]>1 && vdim[0]>1)
     {
-        if (get_poles(d[0], &np, p)) return(1);
+        if (get_poles(d[0], &np, p)!=0) return(1);
+#       pragma omp parallel for collapse(2) private(cp)
         for(k=0; k<vdim[2]; k++)
         {
             /* double dk = k+1; */
@@ -76,8 +77,9 @@ static int vol_coeffs(mwSize vdim[], float vol[], float c[], int d[], void (*spl
     /* Deconvolve along the middle dimension (Y) */
     if (d[1]>1 && vdim[1]>1)
     {
-        if (get_poles(d[1], &np, p)) return(1);
+        if (get_poles(d[1], &np, p)!=0) return(1);
         n =vdim[0];
+#       pragma omp parallel for collapse(2) private(cp,f)
         for(k=0; k<vdim[2]; k++)
         {
             for(i=0;i<vdim[0];i++)
@@ -94,8 +96,9 @@ static int vol_coeffs(mwSize vdim[], float vol[], float c[], int d[], void (*spl
     /* Deconvolve along the slowest dimension (Z) */
     if (d[2]>1 && vdim[2]>1)
     {
-        if (get_poles(d[2], &np, p)) return(1);
+        if (get_poles(d[2], &np, p)!=0) return(1);
         n = vdim[0]*vdim[1];
+#       pragma omp parallel for collapse(2) private(cp,f)
         for(j=0; j<vdim[1]; j++)
         {
             for(i=0;i<vdim[0];i++)
@@ -116,7 +119,7 @@ static int vol_coeffs(mwSize vdim[], float vol[], float c[], int d[], void (*spl
 void bsplinc_mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 {
     mwSize vdim[3];
-    int k, sts, nd, d[3];
+    int k, nd, d[3];
     float *c, *f;
     void (*splinc[3])();
 
@@ -153,7 +156,7 @@ void bsplinc_mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prh
     plhs[0] = mxCreateNumericArray(3,vdim, mxSINGLE_CLASS, mxREAL);
     c = (float *)mxGetPr(plhs[0]);
 
-    sts = vol_coeffs(vdim, f, c, d, splinc);
+    vol_coeffs(vdim, f, c, d, splinc);
 }
 
 /***************************************************************************************
@@ -176,6 +179,7 @@ static void fun(float c[], int m0, int m1, int m2,
     mwSize j;
     double NaN = mxGetNaN();
 
+#   pragma omp parallel for
     for(j=0; j<n; j++)
     {
         if (((cond&1) | (x0[j]>=1-TINY && x0[j]<=m0+TINY)) &&

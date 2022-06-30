@@ -1,36 +1,61 @@
-function [varargout] = cat_surf_info(P,read,gui,verb)
+function [varargout] = cat_surf_info(P,readsurf,gui,verb,useavg)
 % ______________________________________________________________________
 % Extact surface information from filename.
 %
-% sinfo = cat_surf_info(P,readsurf)
+% sinfo = cat_surf_info(P,readsurf,gui,verb)
+%
+%   P         .. surface filename
+%   readsurf  .. read gifti or Freesurfer file to get more information
+%   gui       .. interactive hemisphere selection
+%   verb      .. verbose
 %
 % sinfo(i). 
+%   fname     .. full filename
 %   pp        .. filepath
 %   ff        .. filename
 %   ee        .. filetype
 %   exist     .. exist file?
+%   fdata     .. structure from dir command
 %   ftype     .. filetype [0=no surface,1=gifti,2=freesurfer]
-% 
-%   statready .. ready for statistik (^s#mm.*.gii) [0|1]
-%   side      .. hemishphere [lh|rh] 
-%   datatype  .. [0=nosurf/file|1=mesh|2=data|3=surf]
-%                only with readsurf==1 and with surf=mesh+data
-%   dataname  .. datafieldname [central|thickness|s3thickness|myclalc...]
+%   statready .. ready for statistic (^s#.*.gii) [0|1]
+%   side      .. hemisphere [lh|rh|lc|rc|mesh] 
+%   name      .. subject/template name
+%   datatype  .. [-1=unknown|0=nosurf|1=mesh|2=data|3=surf]
+%                only defined for readsurf==1 and surf=mesh+sidata
+%   dataname  .. datafieldname [central|thickness|intensity...]
 %   texture   .. textureclass [central|sphere|thickness|...]
-%   resampled .. meshspace [0|1] 
+%   label     .. labelmap
+%   resampled .. resampled data [0|1] 
 %   template  .. template or individual mesh [0|1] 
 %   name      .. name of the dataset
+%   roi       .. roi data
+%   nvertices .. number vertices
+%   nfaces    .. number faces
+%   Pmesh     .. underlying meshfile
+%   Psphere   .. sphere mesh
+%   Pspherereg.. registered sphere mesh
+%   Pdefects  .. topology defects mesh
+%   Pdata     .. datafile
+%   preside   .. prefix before hemi info (i.e. after smoothing)
+%   posside   .. string after hemi info
+%   smoothed  .. smoothing size
+%   Phull     .. convex hull mesh
 % ______________________________________________________________________
-% Robert Dahnke
-% $Id: cat_surf_info.m 1136 2017-06-11 14:04:58Z dahnke $
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_surf_info.m 1975 2022-03-21 08:00:58Z dahnke $
 
 %#ok<*RGXP1>
 
-  %if isempty(P) && nargout>0, varargout{1} = {}; return; end
   if ~exist('P','var'), P=''; end
+  if ~exist('useavg','var'), useavg=1; end
   if strcmp(P,'selftest')
     pps = {
-      fullfile(spm('dir'),'toolbox','cat12','template_surfaces')
+      fullfile(spm('dir'),'toolbox','cat12','templates_surfaces')
       fullfile('User','08.15','T1 T2','subs','mri')
       };
     ffs = {
@@ -46,7 +71,9 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
       'rh'
       'rh.'
       'rh.sphere.reg.sub1'
-      'ch.defects.038.37.477'
+      'rc.defects.038.37.477'
+      'lc.s33mmtexture.S01.native.mri'
+      'rc.texture.sub1.sub2'
       };
     ees = {
       ''
@@ -66,7 +93,7 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
   
   
   
-  if nargin<2, read = 0; end
+  if nargin<2, readsurf = 0; end
   if nargin<3, gui  = 0; end
   if nargin<4, verb = 0; end
 
@@ -80,8 +107,7 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
     'exist','',...      % exist
     'fdata','',...      % datainfo (filesize)
     'ftype','',...      % filetype [0=no surface,1=gifti,2=freesurfer]
-    ...
-    'statready',0,...   % ready for statistic (^s#mm.*.gii)
+    'statready',0,...   % ready for statistic (^s#.*.gii)
     'side','',...       % hemishphere
     'name','',...       % subject/template name
     'datatype','',...   % datatype [0=nosurf/file|1=mesh|2=data|3=surf] with surf=mesh+data
@@ -89,29 +115,31 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
     'texture','',...    % textureclass [central|sphere|thickness|...]
     'label','',...      % labelmap
     'resampled','',...  % dataspace
+    'resampled_32k','',...
     'template','',...   % individual surface or tempalte
     'roi','',...        % roi data
     'nvertices',[],...  % number vertices
     'nfaces',[],...     % number faces
-    ...
     'Pmesh','',...      % meshfile
     'Psphere','',...    % meshfile
     'Pspherereg','',... % meshfile
     'Pdefects','',...   % meshfile
+    'Ppial','',...      % meshfile
+    'Pwhite','',...     % meshfile
+    'Player4','',...    % meshfile
     'Pdata','',...      % datafile
-    ...
     'preside','', ...
     'posside','' ...
   );
 
-  if isempty(P), varargout{1}=sinfo; return; end
+  if isempty(P{1}), varargout{1}=sinfo; return; end
   
   for i=1:numel(P)
     [pp,ff,ee] = spm_fileparts(P{i});
     sinfo(i).fdata = dir(P{i});
     
     sinfo(i).fname = P{i};
-    sinfo(i).exist = exist(P{i},'file'); 
+    sinfo(i).exist = exist(P{i},'file') > 0; 
     sinfo(i).pp = pp;
     switch ee
       case {'.xml','.txt','.html','.csv'}
@@ -123,7 +151,7 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
         sinfo(i).ff = ff;
         sinfo(i).ee = ee;
         sinfo(i).ftype = 1;
-        if sinfo(i).exist && read
+        if sinfo(i).exist && readsurf
           S = gifti(P{i});
         end
       case '.annot'
@@ -131,7 +159,7 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
         sinfo(i).ee = ee;
         sinfo(i).ftype = 1;
         sinfo(i).label = 1; 
-        if sinfo(i).exist && read
+        if sinfo(i).exist && readsurf
           clear S; 
           try
             S = cat_io_FreeSurfer('read_annotation',P{1}); 
@@ -144,7 +172,7 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
         sinfo(i).ff = [ff ee];
         sinfo(i).ee = '';
         sinfo(i).ftype = 0;
-        if sinfo(i).exist && read
+        if sinfo(i).exist && readsurf
           clear S; 
           try
             S = cat_io_FreeSurfer('read_surf',P{1}); 
@@ -168,27 +196,47 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
     noname = sinfo(i).ff; 
     
     % smoothed data
-    sinfo(i).statready = ~isempty(regexp(noname,'^s(?<smooth>\d+)mm\..*')); 
+    sinfo(i).statready = ~isempty(regexp(noname,'^s(?<smooth>\d+)\..*')); 
     
     % side
-    if     strfind(noname,'lh'), sinfo(i).side='lh'; sidei = strfind(noname,'lh.');
-    elseif strfind(noname,'rh'), sinfo(i).side='rh'; sidei = strfind(noname,'rh.');
-    elseif strfind(noname,'ch'), sinfo(i).side='ch'; sidei = strfind(noname,'ch.');
+    if     strfind(noname,'lh.'),   sinfo(i).side='lh';   sidei = strfind(noname,'lh.');
+    elseif strfind(noname,'rh.'),   sinfo(i).side='rh';   sidei = strfind(noname,'rh.');
+    elseif strfind(noname,'cb.'),   sinfo(i).side='cb';   sidei = strfind(noname,'cb.');
+    elseif strfind(noname,'mesh.'), sinfo(i).side='mesh'; sidei = strfind(noname,'mesh.');
+    elseif strfind(noname,'lc.'),   sinfo(i).side='lc';   sidei = strfind(noname,'lc.');
+    elseif strfind(noname,'rc.'),   sinfo(i).side='rc';   sidei = strfind(noname,'rc.');
     else
+      
+      % skip for volume files
+      if strcmp(ee,'.nii')
+        continue
+      end
+      
       % if SPM.mat exist use that for side information
       if exist(fullfile(pp,'SPM.mat'),'file')
         load(fullfile(pp,'SPM.mat'));
-        [pp2,ff2]   = spm_fileparts(SPM.xY.VY(1).fname);
+        [pp2,ff2]   = spm_fileparts(SPM.xY.VY(1).fname);        
       
-        % find lh|rh string
-        hemi_ind = [strfind(ff2,'lh') strfind(ff2,'rh') strfind(ff2,'ch')];
-        sinfo(i).side = ff2(hemi_ind(1):hemi_ind(1)+1);
+        % find mesh string
+        hemi_ind = strfind(ff2,'mesh.');
+        if ~isempty(hemi_ind)
+          sinfo(i).side = ff2(hemi_ind(1):hemi_ind(1)+3);
+        else
+          % find lh|rh string
+          hemi_ind = [strfind(ff2,'lh.') strfind(ff2,'rh.') strfind(ff2,'lc.') strfind(ff2,'rc.')];
+          sinfo(i).side = ff2(hemi_ind(1):hemi_ind(1)+1);
+        end
+
         sidei=[];
       else
         if gui
-          sinfo(i).side = spm_input('Hemisphere',1,'lh|rh');
+          if cat_get_defaults('extopts.expertgui')
+            sinfo(i).side = spm_input('Hemisphere',1,'lh|rh|lc|rc|cb|mesh');
+          else
+            sinfo(i).side = spm_input('Hemisphere',1,'lh|rh|mesh');
+          end
         else
-          sinfo(i).side = ''; 
+          sinfo(i).side = 'mesh'; 
         end
         sidei = strfind(noname,[sinfo(i).side '.']);
       end
@@ -200,7 +248,7 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
     else
       sinfo(i).posside = noname;
     end
-    
+
     % smoothed
     if isempty(sinfo(i).preside)
       sinfo(i).smoothed = 0; 
@@ -209,7 +257,7 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
     end
 
     % datatype
-    if sinfo(i).exist && read
+    if sinfo(i).exist && readsurf
       switch num2str([isfield(S,'vertices'),isfield(S,'cdata')],'%d%d')
         case '00',  sinfo(i).datatype  = 0;
         case '01',  sinfo(i).datatype  = 1;
@@ -222,10 +270,13 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
    
     
     % resampled
-    sinfo(i).resampled = ~isempty(strfind(sinfo(i).posside,'.resampled'));
+    sinfo(i).resampled     = ~isempty(strfind(sinfo(i).posside,'.resampled')) && ...
+                              isempty(strfind(sinfo(i).posside,'.resampled_32k'));
+    sinfo(i).resampled_32k = ~isempty(strfind(sinfo(i).posside,'.resampled_32k'));
     % template
     sinfo(i).template  = ~isempty(strfind(lower(sinfo(i).ff),'.template')); 
-    if sinfo(i).template,  sinfo(i).resampled = 1; end
+    % CG20210226: This caused crashes in cat_surf_surf2roi.m for some files
+%    if sinfo(i).template,  sinfo(i).resampled = 1; end
     
 
     % name / texture
@@ -234,10 +285,11 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
     % and also the dataname / texture can include points ...
     resi = [strfind(sinfo(i).posside,'template.'),... 
             strfind(sinfo(i).posside,'resampled.'),...
+            strfind(sinfo(i).posside,'resampled_32k.'),...
             strfind(sinfo(i).posside,'sphere.reg.')]; 
     if ~isempty(resi)
       sinfo(i).name = cat_io_strrep(sinfo(i).posside(max(resi):end),...
-        {'template.','resampled.','sphere.reg'},''); %sinfo(i).posside,
+        {'template.','resampled.','resampled_32k.','sphere.reg'},''); %sinfo(i).posside,
       if ~isempty(sinfo(i).name) && sinfo(i).name(1)=='.', sinfo(i).name(1)=[]; end
       sinfo(i).texture = sinfo(i).posside(1:min(resi)-2);
     else
@@ -264,13 +316,21 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
       fprintf('%4s\n',sinfo(i).ee);
     end
     % dataname
-    sinfo(i).dataname  = cat_io_strrep(sinfo(i).posside,{sinfo(i).name,'template.','resampled.'},''); 
+    sinfo(i).dataname  = cat_io_strrep(sinfo(i).posside,{sinfo(i).name,'template.','resampled.','resampled_32k.'},''); 
     if ~isempty(sinfo(i).dataname) && sinfo(i).dataname(end)=='.', sinfo(i).dataname(end)=[]; end
+    
+    % if texture is empty use dataname, otherwise texture is more reliable and should
+    % be used instead of dataname 
+    if isempty(sinfo(i).texture)
+      sinfo(i).texture = sinfo(i).dataname;
+    else
+      sinfo(i).dataname = sinfo(i).texture;
+    end
     
     % ROI
     sinfo(i).roi = ~isempty(strfind(sinfo(i).posside,'.ROI'));
     
-    
+
     
     % find Mesh and Data Files
     %  -----------------------------------------------------------------
@@ -282,25 +342,55 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
       sinfo(i).Pdata = sinfo(i).fname;
     end
     % if we have read the gifti than we can check for the fields
-    if isempty(sinfo(i).Pmesh) && sinfo(i).exist && read && isfield(S,'vertices')
+    if isempty(sinfo(i).Pmesh) && sinfo(i).exist && readsurf && isfield(S,'vertices')
       sinfo(i).Pmesh = sinfo(i).fname; 
     end
-    if isempty(sinfo(i).Pdata) && sinfo(i).exist && read && isfield(S,'cdata')
+    if isempty(sinfo(i).Pdata) && sinfo(i).exist && readsurf && isfield(S,'cdata')
       sinfo(i).Pdata = sinfo(i).fname;
     end
+    
+    % check whether cdata field and mesh structure exist for gifti data
+    if strcmp(sinfo(i).ee,'.gii') && sinfo(i).exist && readsurf && (isempty(sinfo(i).Pdata) || isempty(sinfo(i).Pmesh))
+      S = gifti(sinfo(i).fname);
+      if isfield(S,'cdata') && isfield(S,'faces') && isfield(S,'vertices')
+        sinfo(i).Pmesh = sinfo(i).fname;
+        sinfo(i).Pdata = sinfo(i).fname;
+      end
+    end
+    
     % if the dataname is central we got a mesh or surf datafile
     if isempty(sinfo(i).Pdata) || isempty(sinfo(i).Pmesh) 
+      Pcentral = fullfile(sinfo(i).pp,[strrep(sinfo(i).ff,['.' sinfo(i).texture],'.central') sinfo(i).ee]);
       switch sinfo(i).texture
-        case {'defects'} % surf
-          sinfo(i).Pmesh = sinfo(i).fname;
-          sinfo(i).Pdata = sinfo(i).fname;
-        case {'central','inner','outer','sphere','hull'} % only mesh
+        %case {'defects'} % surf
+        %  sinfo(i).Pmesh = sinfo(i).fname;
+        %  sinfo(i).Pdata = sinfo(i).fname;
+        case {'central','white','pial','inner','outer','sphere','hull','core','layer4'} % only mesh
           sinfo(i).Pmesh = sinfo(i).fname;
           sinfo(i).Pdata = '';
-        case {'thickness','gyrification','frac','logsulc','GWMdepth','WMdepth','CSFdepth',...
-             'depthWM','depthGWM','depthCSF','depthWMg',...
-             'gyruswidth','gyruswidthWM','sulcuswidth'} % only thickness
+        case {'pbt','thickness','thicknessfs','thicknessmin','thicknessmax',...
+              'gyrification','frac','depth','sqrtdepth','GWMdepth','WMdepth','CSFdepth',...
+              'depthWM','depthGWM','depthCSF','depthWMg','inwardGI','outwardGI','generalizedGI',...
+              'area','defects','lGI','toroGI',...
+              'intlayer4','intwhite','intpial',...
+              'gyruswidth','gyruswidthWM','sulcuswidth'} % only thickness
           sinfo(i).Pdata = sinfo(i).fname;
+          if strcmp(sinfo(i).ee,'.gii') && sinfo(i).ftype == 1 && exist(sinfo(i).fname,'file') 
+            S = gifti(sinfo(i).fname);
+            if isfield(S,'vertices') && isfield(S,'faces')
+              sinfo(i).Pmesh = sinfo(i).fname;
+            end
+          end
+        otherwise
+          sinfo(i).Pdata =sinfo(i).fname;
+          if exist(Pcentral,'file') && ~useavg
+            sinfo(i).Pmesh = Pcentral;
+          elseif strcmp(sinfo(i).ee,'.gii') && sinfo(i).ftype == 1 && exist(sinfo(i).fname,'file')
+            S = gifti(sinfo(i).fname);
+            if isfield(S,'vertices') && isfield(S,'faces')
+              sinfo(i).Pmesh = sinfo(i).fname;
+            end
+          end
       end
     end
     % if we still dont know what kind of datafile, we can try to find a
@@ -318,25 +408,121 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
         end
       end
     end
-    % if we got still no mesh than we can find an average mesh
+    % if we got still no mesh than we can use SPM.mat information or average mesh
     % ...
     if isempty(sinfo(i).Pmesh) %&& sinfo(i).ftype==1
-      sinfo(i).Pmesh = ...
-        fullfile(spm('dir'),'toolbox','cat12','templates_surfaces',[sinfo(i).side '.central.freesurfer.gii']);
+      try 
+        if ischar(SPM.xVol.G)
+          % data or analysis moved or data are on a different computer?
+          if ~exist(SPM.xVol.G,'file')
+            [pp2,ff2,xx2] = spm_fileparts(SPM.xVol.G);
+            % rename old Template name from previous versions
+            ff2 = strrep(ff2,'Template_T1_IXI555_MNI152_GS',cat_get_defaults('extopts.shootingsurf'));
+            if ~isempty(strfind(ff2,'.central.freesurfer')) || ~isempty(strfind(ff2,['.central.' cat_get_defaults('extopts.shootingsurf')]))
+              if strfind(pp2,'templates_surfaces_32k')
+                SPM.xVol.G = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces_32k',[ff2 xx2]);
+              else
+                SPM.xVol.G = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces',[ff2 xx2]);
+              end
+            end
+          end
+
+          sinfo(i).Pmesh = SPM.xVol.G;
+        else
+          % 32k mesh?
+          if SPM.xY.VY(1).dim(1) == 32492 || SPM.xY.VY(1).dim(1) == 64984
+            sinfo(i).Pmesh = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces_32k',...
+              [sinfo(i).side '.central.freesurfer.gii']);
+          else
+            sinfo(i).Pmesh = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces',...
+              [sinfo(i).side '.central.freesurfer.gii']);
+          end
+        end
+      catch
+        % 32k mesh? 
+        switch sinfo(i).ee
+          case '.gii'
+            if sinfo(i).exist && ~readsurf
+              S = gifti(P{i});
+            end
+          case '.annot'
+            if sinfo(i).exist && ~readsurf
+              clear S; 
+              try
+                S = cat_io_FreeSurfer('read_annotation',P{1});
+              end
+            end
+        end
+        
+        if exist('S','var') && isfield(S,'cdata') && (length(S.cdata) == 32492 || length(S.cdata) == 64984)
+          sinfo(i).Pmesh = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces_32k',...
+            [sinfo(i).side '.central.freesurfer.gii']);
+        elseif exist('S','var') && isfloat(S) && (length(S) == 32492 || length(S) == 64984)
+          sinfo(i).Pmesh = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces_32k',...
+            [sinfo(i).side '.central.freesurfer.gii']);
+        else
+          if sinfo(1).resampled_32k
+            str_32k = '_32k';
+          else
+            str_32k = '';
+          end
+          sinfo(i).Pmesh = fullfile(spm('dir'),'toolbox','cat12',['templates_surfaces' str_32k],...
+            [sinfo(i).side '.central.freesurfer.gii']);
+        end
+      end
       sinfo(i).Pdata = sinfo(i).fname;
     end
-    
+
     [ppm,ffm,eem]        = fileparts(sinfo(i).Pmesh);
+    % RD202203 new garbage:   if ~strcmp(eem,'.gii'), eem = [eem '.gii']; end
+    ffm                  = cat_io_strrep(ffm,{'thickness','central','white','pial','inner','outer','sphere','hull','core','layer4'},'central');
+    % RD202203 new garbage:  ffm                  = cat_io_strrep(ffm,{'.resampled_32k','.resampled'},'');
     sinfo(i).Phull       = fullfile(ppm,strrep(strrep([ffm eem],'.central.','.hull.'),'.gii',''));
+    sinfo(i).Pcore       = fullfile(ppm,strrep(strrep([ffm eem],'.central.','.core.'),'.gii',''));
     sinfo(i).Psphere     = fullfile(ppm,strrep([ffm eem],'.central.','.sphere.'));
     sinfo(i).Pspherereg  = fullfile(ppm,strrep([ffm eem],'.central.','.sphere.reg.'));
     sinfo(i).Pdefects    = fullfile(ppm,strrep([ffm eem],'.central.','.defects.'));
-    if ~exist(sinfo(i).Psphere ,'file'), sinfo(i).Psphere  = ''; end
+    sinfo(i).Player4     = fullfile(ppm,strrep([ffm eem],'.central.','.layer4.'));
+    sinfo(i).Pwhite      = fullfile(ppm,strrep([ffm eem],'.central.','.white.'));
+    sinfo(i).Ppial       = fullfile(ppm,strrep([ffm eem],'.central.','.pial.'));
+
     if ~exist(sinfo(i).Pdefects,'file'), sinfo(i).Pdefects = ''; end
 
+    %{
+    RD202203 new garbage
+    if sinfo(i).resampled_32k || sinfo(i).resampled
+      % in case of resampled data we have to use the freesurfer spheres ? 
+      if sinfo(1).resampled_32k
+        str_32k = '_32k';
+      else
+        str_32k = '';
+      end
+      sinfo(i).Psphere = fullfile(spm('dir'),'toolbox','cat12',['templates_surfaces' str_32k],...
+            [sinfo(i).side '.sphere.freesurfer.gii']);
+      sinfo(i).Pspherereg = fullfile(spm('dir'),'toolbox','cat12',['templates_surfaces' str_32k],...
+            [sinfo(i).side '.sphere.reg.freesurfer.gii']);          
+    end
+    %}
     
-    if sinfo(i).exist && read
-      if isfield(S,'vertices'), 
+    % check if files exist and if they have the same structure (size)
+    Pmesh_data = dir(sinfo(i).Pmesh);
+    FN = {'Phull','Pcore','Psphere','Pspherereg','Pwhite','Ppial','Player4'};
+    for fni = 1:numel(FN)
+      if exist(sinfo(i).(FN{fni}) ,'file')
+        Pdata = dir(sinfo(i).(FN{fni}));
+        if isempty(Pmesh_data) || isempty(Pdata) || abs(Pmesh_data.bytes - Pdata.bytes)>1500 % data saved by CAT tools may vary a little bit
+          sinfo(i).(FN{fni})  = '';
+        end
+      else
+        sinfo(i).(FN{fni})  = '';
+      end
+    end
+    
+
+
+    
+    if sinfo(i).exist && readsurf
+      if isfield(S,'vertices') 
         sinfo(i).nvertices = size(S.vertices,1);
       else
         if ~isempty(sinfo(i).Pmesh) && exist(sinfo(i).Pmesh,'file')
@@ -345,9 +531,9 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
           if isfield(S2,'vertices'), S.vertices = S2.vertices; else S.vertices = []; end
           if isfield(S2,'faces'),    S.faces    = S2.faces;    else S.faces = []; end
         end
-        if isfield(S,'vertices'),
+        if isfield(S,'vertices')
           sinfo(i).nvertices = size(S.vertices,1);
-        elseif isfield(S,'cdata'),
+        elseif isfield(S,'cdata')
           sinfo(i).nvertices = size(S.cdata,1);
         else 
           sinfo(i).nvertices = nan;
@@ -356,8 +542,10 @@ function [varargout] = cat_surf_info(P,read,gui,verb)
       if isfield(S,'faces'),    sinfo(i).nfaces    = size(S.faces,1); end
       if isfield(S,'cdata'),    sinfo(i).ncdata    = size(S.cdata,1); end
     end
-    
-    sinfo(i).catxml = fullfile(pp,['cat_' sinfo(i).name '*.xml']);
+
+    [ppx,ffx] = spm_fileparts(pp); 
+    sinfo(i).catxml = fullfile(ppx,strrep(ffx,'surf','report'),['cat_' sinfo(i).name '.xml']);
+    if ~exist(sinfo(i).catxml,'file'), fullfile(pp,['cat_' sinfo(i).name '.xml']); end 
     if ~exist(sinfo(i).catxml,'file'), sinfo(i).catxml = ''; end 
     
     if nargout>1

@@ -6,12 +6,12 @@ function DEM_demo_induced_fMRI
 % convolution (fMRI) model using simulated data. Here, the dynamic
 % convolution model for fMRI responses is converted into a static
 % non-linear model by generating not the timeseries per se but their
-% second-order statistics – in the form of cross spectra and covariance
+% second-order statistics - in the form of cross spectra and covariance
 % functions. This enables model parameters to the estimated using the
 % second order data features through minimisation of variational free
 % energy. For comparison, the same data are inverted (in timeseries form)
 % using generalised filtering. This example uses a particularly difficult
-% problem – with limited data - to emphasise the differences.
+% problem - with limited data - to emphasise the differences.
 %
 % NB - the generalised filtering trakes much longer than the deterministic
 % scheme
@@ -19,7 +19,7 @@ function DEM_demo_induced_fMRI
 % Copyright (C) 2010 Wellcome Trust Centre for Neuroimaging
  
 % Karl Friston
-% $Id: DEM_demo_induced_fMRI.m 6759 2016-03-27 19:45:17Z karl $
+% $Id: DEM_demo_induced_fMRI.m 7679 2019-10-24 15:54:07Z spm $
  
 % Simulate timeseries
 %==========================================================================
@@ -45,7 +45,6 @@ options.two_state  = 0;
 options.stochastic = 1;
 options.centre     = 1;
 options.induced    = 1;
-options.maxit      = 8;
  
 A   = ones(n,n);
 B   = zeros(n,n,0);
@@ -57,7 +56,7 @@ pP  = spm_dcm_fmri_priors(A,B,C,D,options);
 % true parameters (reciprocal connectivity)
 % -------------------------------------------------------------------------
 pP.A = [  0  -.2    0;
-        -.3    0   .3
+         .3    0  -.1;
           0   .2    0];
 pP.C = eye(n,n);
 pP.transit = randn(n,1)/16;
@@ -81,7 +80,7 @@ end
  
 % observation noise process
 % -------------------------------------------------------------------------
-e    = spm_rand_mar(T,n,1/2)/8;
+e    = spm_rand_mar(T,n,1/2)/4;
  
 % show simulated response
 %--------------------------------------------------------------------------
@@ -130,6 +129,8 @@ DCM.U.dt = TR;
 % nonlinear system identification (Variational Laplace) - deterministic DCM
 % =========================================================================
 CSD = spm_dcm_fmri_csd(DCM);
+
+
  
 % summary
 % -------------------------------------------------------------------------
@@ -147,7 +148,9 @@ axis square
 
 % initialise parameters using deterministic estimates
 % -------------------------------------------------------------------------
-DCM.options.P = rmfield(CSD.Ep,{'a','b','c'});
+DCM.options.maxit = 8;
+DCM.options.pE    = rmfield(CSD.Ep,{'a','b','c'});
+
 
 % invert
 % -------------------------------------------------------------------------

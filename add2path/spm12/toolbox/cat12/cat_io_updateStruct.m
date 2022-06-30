@@ -12,8 +12,14 @@ function S=cat_io_updateStruct(S,SN,RepByEmpty,ind)
 %   unexpected behaviour. Updating of structures is a complex topic with 
 %   many subcases and here only a simple alignment is used!
 %
-% _________________________________________________________________________
-% $Id: cat_io_updateStruct.m 942 2016-05-30 12:49:42Z dahnke $
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_io_updateStruct.m 1791 2021-04-06 09:15:54Z gaser $
 
   % check input
   if ~exist('RepByEmpty','var'), RepByEmpty=0; end
@@ -43,7 +49,7 @@ function S=cat_io_updateStruct(S,SN,RepByEmpty,ind)
             if numel(S)<ind
               % if the field does not exist yet, we use the first
               % element for initialization 
-              S(ind).(fnS{fnSi})   = cat_io_updateStruct(S(1).(fnS{fnSi}),SN.(fnS{fnSi}),0);
+              S(ind).(fnS{fnSi}) = cat_io_updateStruct(S(1).(fnS{fnSi}),SN.(fnS{fnSi}),0);
             else
               S(ind).(fnS{fnSi}) = cat_io_updateStruct(S(ind).(fnS{fnSi}),SN.(fnS{fnSi}),RepByEmpty);
             end

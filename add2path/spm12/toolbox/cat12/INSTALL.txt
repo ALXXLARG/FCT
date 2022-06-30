@@ -1,5 +1,5 @@
 % Computational Anatomy Toolbox
-% Version  1152  (CAT12)  2017-07-05
+% Version  1987 CAT12.8.1 2022-04-25
 
 ======================================================================
 Installation

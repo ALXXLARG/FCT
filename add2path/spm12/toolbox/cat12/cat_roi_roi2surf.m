@@ -10,8 +10,13 @@ function varargout = cat_roi_roi2surf(job)
 %   job.vars .. set of fieldnames
 %
 % ______________________________________________________________________
-% Robert Dahnke
-% $Id: cat_roi_roi2surf.m 945 2016-06-06 06:54:56Z gaser $
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_roi_roi2surf.m 1894 2021-10-14 23:45:55Z gaser $
   
   if nargin == 1
     def.verb = 1;
@@ -19,7 +24,7 @@ function varargout = cat_roi_roi2surf(job)
     def.assuregifti   = 1;
     def.fsaverage     = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces','lh.central.freesurfer.gii');  
     def.inflated      = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces','lh.inflated.freesurfer.gii');  
-    def.dartelaverage = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces','lh.central.Template_T1_IXI555_MNI152.gii');    
+    def.dartelaverage = fullfile(spm('dir'),'toolbox','cat12','templates_surfaces',['lh.central.' cat_get_defaults('extopts.shootingsurf') '.gii']);    
     
     job = cat_io_checkinopt(job,def);
   else
@@ -62,7 +67,7 @@ function varargout = cat_roi_roi2surf(job)
       fprintf('process "%s":\n',job.rdata{rfi});
     end
     
-    %% first we need to load the RIO tables in a similar style 
+    %% first we need to load the ROI tables in a similar style 
     clear xml;
     switch ee
       case '.csv'

@@ -30,12 +30,12 @@ function varargout = spm_render(dat,brt,rendfile)
 % are 10mm behind the surface have half the intensity of ones at the
 % surface.
 %__________________________________________________________________________
-% Copyright (C) 1996-2015 Wellcome Trust Centre for Neuroimaging
+% Copyright (C) 1996-2019 Wellcome Trust Centre for Neuroimaging
 
 % John Ashburner
-% $Id: spm_render.m 6510 2015-07-31 14:49:33Z guillaume $
+% $Id: spm_render.m 7577 2019-04-24 08:59:56Z guillaume $
 
-SVNrev = '$Rev: 6510 $';
+SVNrev = '$Rev: 7577 $';
 
 global prevrend
 if ~isstruct(prevrend)
@@ -74,7 +74,7 @@ if ~strcmpi(ext,'mat') || loadgifti
         try
             M = rend;
             rend = gifti(rend.private.metadata(1).value);
-            try, rend.cdata = M.cdata(); end
+            try, rend.cdata = full(M.cdata); end
         catch
             error('Cannot find a surface mesh to be displayed.');
         end
@@ -427,7 +427,7 @@ switch lower(varargin{1})
     Z = Z*vx(3) + xyz(3);
     hold(ax,'on');
     hs = surf(X,Y,Z,'parent',ax,...
-        'EdgeColor','none','FaceColor',[1 0 0],'FaceLighting', 'phong');
+        'EdgeColor','none','FaceColor',[1 0 0],'FaceLighting', 'gouraud');
     set(hs,'UserData',xyz);
     
     varargout = {hs};

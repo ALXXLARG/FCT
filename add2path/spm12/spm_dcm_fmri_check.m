@@ -47,7 +47,7 @@ function [DCM] = spm_dcm_fmri_check(P, varargin)
 % Copyright (C) 2012-2013 Wellcome Trust Centre for Neuroimaging
 
 % Karl Friston
-% $Id: spm_dcm_fmri_check.m 6800 2016-05-25 09:33:15Z peter $
+% $Id: spm_dcm_fmri_check.m 7639 2019-07-16 14:48:11Z peter $
 
 
 %-Prepare inputs
@@ -101,6 +101,11 @@ if iscell(DCM)
         drawnow;
     end
     
+    % Load if filenames given
+    if ischar(DCM{1})
+        DCM = spm_dcm_load(DCM);
+    end
+      
     % Call spm_dcm_fmri_check recursively to assemble diagnostics
     [stats,DCM] = get_diagnostics(DCM);
 
@@ -136,7 +141,7 @@ if iscell(DCM)
         title('Free energy','FontSize',16)
         axis square
 
-        subplot(10,3,[26 29]), bar(DCM{1}.EEB(:),'b')
+        subplot(10,3,[26 29]), bar(cellfun(@mean,DCM{1}.EEB(:)),'b')
         xlabel('iteration','FontSize',12)
         title('Log precision','FontSize',16)
         axis square
@@ -195,7 +200,7 @@ D(2)  = max(max(abs(A - diag(diag(A)))));
 qE    = spm_vec(DCM.Ep);
 pE    = spm_vec(DCM.M.pE);
 qC    = DCM.Cp;
-pC    = DCM.M.pC;
+pC    = full(DCM.M.pC);
 k     = rank(full(pC));
 pC    = pinv(pC);
 
@@ -215,9 +220,7 @@ spm_figure('GetWin','DCM diagnostics'); clf
 
 % back to GCM link if needed
 %--------------------------------------------------------------------------
-if ~isempty(GCM)
-   p = get(gcf,'Position');
-    
+if ~isempty(GCM)   
    uicontrol('Style','PushButton','String','Return to models',...
         'Enable','Inactive','ButtonDownFcn',@backbutton_clicked, ...
         'Units','Normalized','Position',[0.04 0.96 0.2 0.03],...
@@ -239,29 +242,32 @@ if strcmp(analysis,'CSD')
     ns   = size(DCM.a,1);          % number of regions
     ns   = min(ns,8);              % bounded number of regions
     
+    c = lines(ns);
+    h = [];
     for i = 1:ns
-
         Hc(:,i) = abs(DCM.Hc(:,i,i));
-        Yc(:,i) = abs(DCM.Hc(:,i,i) + DCM.Rc(:,i,i));
-            
+        Yc(:,i) = abs(DCM.Hc(:,i,i) + DCM.Rc(:,i,i));            
+                
+        h(i)=plot(Hz,Hc(:,i),'Color',c(i,:)); hold on
+        plot(Hz,Yc(:,i),':','Color',c(i,:)) 
     end
-        
-        plot(Hz,Hc), hold on
-        plot(Hz,Yc,':'), hold off
-        str = sprintf('variance explained %0.0f%%', D(1));
-        str = {'Responses and Predictions',str};
-        
-        if D(1) > 10
-    
-            title(str,'FontSize',16);
-        else
-            title(str,'FontSize',16,'Color','r');
-        end
-        
-        xlabel('frequency (Hz)')
-        ylabel('abs(CSD)')
-        axis square, spm_axis tight
-        legend(name)
+    hold off 
+
+    str = sprintf('variance explained %0.0f%%', D(1));
+    str = {'Responses and Predictions',str};
+
+    if D(1) > 10
+        title(str,'FontSize',16);
+    else
+        title(str,'FontSize',16,'Color','r');
+    end
+
+    xlabel('frequency (Hz)')
+    ylabel('abs(CSD)')
+    axis square, spm_axis tight
+    try
+        legend(h,name)
+    end
 else
     t   = (1:DCM.v)*DCM.Y.dt;
     plot(t,DCM.y,t,DCM.y + DCM.R,':');
@@ -451,6 +457,8 @@ DCM = button_data.DCM;
 GCM = button_data.GCM;
 
 if ~isempty(button_data.DCM)
+    dcm_obj = datacursormode(gcf);
+    set(dcm_obj,'UpdateFcn',[]);
     datacursormode off;
     spm_dcm_fmri_check(DCM, false, GCM);
 end

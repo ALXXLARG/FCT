@@ -7,7 +7,7 @@ function varargout = cat_vol_imcalc(Vi,Vo,f,flags,varargin)
 %__________________________________________________________________________
 %
 % Perform algebraic functions on images
-% FORMAT Vo = spm_imcalc(Vi, Vo, f [,flags [,extra_vars...]])
+% FORMAT [Vo, Yo] = cat_vol_imcalc(Vi, Vo, f [,flags [,extra_vars...]])
 % Vi            - struct array (from spm_vol) of images to work on
 %                 or a char array of input image filenames
 % Vo (input)    - struct array (from spm_vol) containing information on
@@ -31,9 +31,10 @@ function varargout = cat_vol_imcalc(Vi,Vo,f,flags,varargin)
 %
 % Vo (output)   - spm_vol structure of output image volume after
 %                 modifications for writing
+% Yo            - output image 
 %__________________________________________________________________________
 %
-% spm_imcalc performs user-specified algebraic manipulations on a set of
+% cat_vol_imcalc performs user-specified algebraic manipulations on a set of
 % images, with the result being written out as an image. 
 % The images specified in Vi, are referred to as i1, i2, i3,...  in the
 % expression to be evaluated, unless the dmtx flag is setm in which
@@ -80,7 +81,7 @@ function varargout = cat_vol_imcalc(Vi,Vo,f,flags,varargin)
 % data-matrix version, the weighted sum can be computed using:
 %       Vi = spm_vol(spm_select(inf,'image'));
 %       Vo = 'output.img'
-%       Q  = spm_imcalc(Vi,Vo,'c*X',{1},c)
+%       Q  = cat_vol_imcalc(Vi,Vo,'c*X',{1},c)
 % Here we've pre-specified the expression and passed the vector c as an
 % additional variable (you'll be prompted to select the n images).
 %__________________________________________________________________________
@@ -89,9 +90,15 @@ function varargout = cat_vol_imcalc(Vi,Vo,f,flags,varargin)
 % John Ashburner & Andrew Holmes
 % Id: spm_imcalc.m 6043 2014-06-13 14:31:48Z volkmar 
 % ______________________________________________________________________
-% $Id: cat_vol_imcalc.m 764 2015-11-17 13:11:53Z gaser $ 
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_vol_imcalc.m 1826 2021-05-17 15:38:07Z gaser $ 
 
-SVNid = '$Rev: 764 $';
+SVNid = '$Rev: 1826 $';
 
 %-Parameters & arguments
 %==========================================================================
@@ -210,7 +217,13 @@ for p = 1:Vo.dim(3)
     for i = 1 + isempty(strfind(f,'i1')):n % use i1 only to get the resolution properties
         M = inv(B * inv(Vo.mat) * Vi(i).mat);
         d = spm_slice_vol(Vi(i), M, Vo.dim(1:2), [interp,NaN]);
-        if (mask < 0), d(isnan(d)) = 0; end
+        if (mask < 0), 
+          if (mask <-1),
+            [D,I] = cat_vbdist(single(~(isnan(d))),true(size(d))); clear D;  %#ok<ASGLU>
+            d = d(I); clear I;
+          end
+          d(isnan(d)) = 0; 
+        end
         if (mask > 0) && ~spm_type(Vi(i).dt(1),'nanrep'), d(d==0)=NaN; end
         if dmtx, X(i,:) = d(:)'; else eval(['i',num2str(i),'=d;']); end
     end
@@ -234,8 +247,21 @@ end
 %-Write output image
 %--------------------------------------------------------------------------
 if nargout <= 1
+  if exist(Vo.fname,'file'); delete(Vo.fname); end
   varargout{1} = spm_write_vol(Vo,Y); 
 elseif nargout == 2
+  if isfield(Vo,'dat');
+    switch Vo.dt(1)
+      case 2,   Vo.dat = cat_vol_ctype(Y,'uint8');  
+      case 4,   Vo.dat = cat_vol_ctype(Y,'int16'); 
+      case 8,   Vo.dat = cat_vol_ctype(Y,'int32'); 
+      case 16,  Vo.dat = single(Y); 
+      case 64,  Vo.dat = double(Y); 
+      case 256, Vo.dat = cat_vol_ctype(Y,'int8'); 
+      case 512, Vo.dat = cat_vol_ctype(Y,'uint16'); 
+      case 768, Vo.dat = cat_vol_ctype(Y,'uint32'); 
+    end
+  end
   varargout{1} = Vo; 
   varargout{2} = Y; 
 end

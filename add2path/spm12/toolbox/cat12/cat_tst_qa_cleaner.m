@@ -74,11 +74,13 @@ function varargout = cat_tst_qa_cleaner(data,opt)
 %      F-  clear failed
 %
 % ______________________________________________________________________
-% Robert Dahnke 
-% Structural Brain Mapping Group
-% University Jena
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
 % ______________________________________________________________________
-% $Id: cat_tst_qa_cleaner.m 1118 2017-03-17 15:57:00Z gaser $ 
+% $Id: cat_tst_qa_cleaner.m 1850 2021-06-28 09:59:10Z dahnke $ 
 
 
   clear th; 
@@ -120,7 +122,7 @@ function varargout = cat_tst_qa_cleaner(data,opt)
     for di=1:numel(xml)
       opt.site(di,1) = xml(di).qualityratings.res_RMS; 
       data(di,1)     = xml(di).qualityratings.NCR; 
-    end,
+    end
   end
   
 
@@ -133,7 +135,7 @@ function varargout = cat_tst_qa_cleaner(data,opt)
   % concider 80% of the data.
   %  -------------------------------------------------------------------
   if isfield(opt,'site')
-    if numel(opt.site)~=numel(data),
+    if numel(opt.site)~=numel(data)
       error('cat_tst_qa_cleaner:numelsitedata','Numer of elements in data and opt.site have to be equal.\n');
     end
     opt.site = round(opt.site*opt.siterf)/opt.siterf; 
@@ -169,7 +171,7 @@ function varargout = cat_tst_qa_cleaner(data,opt)
     %  -----------------------------------------------------------------
     if exist('data','var') && ~(iscell(data) && strcmp(data{1},'test'))
       d = data; 
-      if numel(d)==0, 
+      if numel(d)==0 
         if nargout>=1, varargout{1} = nan; end
         if nargout>=2, varargout{2} = nan(1,opt.grads); end
         if nargout>=3, varargout{3} = nan(1,2); end
@@ -256,7 +258,7 @@ function varargout = cat_tst_qa_cleaner(data,opt)
   %  I start with several ideas that all based on a similar idea: to 
   %  find the first peak that is given by the subset of images without
   %  inferences and to use the variance of this peak for further scaling
-  %  of subsets for other grads. As far as IQR is allready scaled, we 
+  %  of subsets for other grads. As far as IQR is already scaled, we 
   %  can limit the variance value ... e.g. the rating has an error of 
   %  0-2 rps (0.0-0.2 mark points) that is very low for high-quality data
   %  and higher for low-quality data. Due to our the general subdivion 
@@ -280,9 +282,10 @@ function varargout = cat_tst_qa_cleaner(data,opt)
         % * use the std give by one BWP noise level (0.5) to describe the 
         %   variance the passed interval.
         
-        hx = hist(d,0.5:1:5.5);
-        peaks = sum(hx>(max(hx)/5))*3;
-        [thx,sdx] = kmeans3D(d,peaks); sdx = sdx./thx;
+        %H = histogram(d,0.5:1:5.5);
+        H.Values = hist(d,0.5:1:5.5); 
+        peaks = sum(H.Values>(max(H.Values)/5))*3;
+        [thx,sdx] = cat_stat_kmeans(d,peaks); sdx = sdx./thx;
         for i=1:peaks
           if sum(d<thx(i))/numel(d) < 0.3
             thx(1) = cat_stat_nanmean(thx(1:2));
@@ -298,10 +301,11 @@ function varargout = cat_tst_qa_cleaner(data,opt)
         % similar to case 1, but with std optimization based on the data 
         % ... surprisingly the simple model 1 works better
         
-        hx = hist(d,0.5:1:5.5); 
+        %H = histogram(d,0.5:1:5.5); 
+        H.Values = hist(d,0.5:1:5.5); 
         %for i=1:1, hx(2:end-1) = cat_stat_nanmean(cat(1,hx(1:end-2),hx(2:end-1),hx(3:end)),1); end
-        peaks = sum(hx>(max(hx)/5))*3;
-        [thx,sdx] = kmeans3D(d,peaks); sdx = sdx./thx;
+        peaks = sum(H.Values>(max(H.Values)/5))*3;
+        [thx,sdx] = cat_stat_kmeans(d,peaks); sdx = sdx./thx;
         for i=1:peaks
           %if numel(thx)>i && sum(d<thx(i))/numel(d) < 0.05
           %  thx(1) = []; sdx(1) = [];
@@ -311,7 +315,7 @@ function varargout = cat_tst_qa_cleaner(data,opt)
           end
         end
         sdx(1) = cat_stat_nanstd(d(d<thx(1)));
-        [thx,sdx] = kmeans3D(d(d<=(max([min(d),thx(1)+sdx(1)]))),3); thx=thx(2); sdx=sdx(2);  %sdx = sdx./thx;
+        [thx,sdx] = cat_stat_kmeans(d(d<=(max([min(d),thx(1)+sdx(1)]))),3); thx=thx(2); sdx=sdx(2);  %sdx = sdx./thx;
         sd    = min(1/3,max(1/6,sdx(1))) / (opt.grads/2) * opt.cf; % 0.5 = 1% BWP noise*16
         th(1) = thx(1) - sdx(1) + 2*sd(1);
         for i = 2:opt.grads-1
@@ -338,13 +342,14 @@ function varargout = cat_tst_qa_cleaner(data,opt)
       set(f,'color','w')
     elseif opt.figure==3
       f = findobj('type','figure','name','qa_cleaner_test');
-      if isempty(f), figure('name','qa_cleaner_test'); else figure(f(1)); clf(f(1)); end
+      if isempty(f), figure('name','qa_cleaner_test'); else, figure(f(1)); clf(f(1)); end
     end
     box on;
     
     %figure
     ss = 0.05; 
     [h,r]  = hist(d,0.5:ss:10.5); 
+    %H =  histogram(d,0.5:ss:10.5); h = H.Values; r = H.BinEdges;
     for i=1:opt.smooth, h(2:end-1) = cat_stat_nanmean(cat(1,h(1:end-2),h(2:end-1),h(3:end)),1); end
     sh = 1; %sum(h);
     
@@ -455,7 +460,7 @@ function varargout = cat_tst_qa_cleaner(data,opt)
     set(axF,'YTick',[],'XTickLabel',{},'XTick',6,'XColor',color(QMC,6),'Color','none','XTicklabel','F','TickLength',[0 0],'Fontsize',FS,'Fontweight','bold');
     hold off; 
     
-    if isfield(opt,'site') && numel(sites>1);
+    if isfield(opt,'site') && numel(sites)>1
       title(sprintf('Histogram (cf=%0.2f) - global treshold for multisite output (n=%d)',opt.cf,numel(sites)),'Fontsize',FS);
     else
       title(sprintf('Histogram (cf=%0.2f)',opt.cf),'Fontsize',FS);
@@ -465,7 +470,7 @@ function varargout = cat_tst_qa_cleaner(data,opt)
   end
   %%
   MarkColor = cat_io_colormaps('marks+',40); 
-  if isfield(opt,'site') && numel(sites)>1, globcorr = ' (global corrected)'; else globcorr = ''; end
+  if isfield(opt,'site') && numel(sites)>1, globcorr = ' (global corrected)'; else, globcorr = ''; end
   if exist('P','var')
     files = P(data<=markths2(:,3)); 
     fprintf('PASSED%s: %0.2f%%\n',globcorr,numel(files)/numel(data)*100)
@@ -513,4 +518,17 @@ function varargout = cat_tst_qa_cleaner(data,opt)
   if nargout>=4, varargout{4} = markths;  end
   if nargout>=5, varargout{5} = markths2; end
   if nargout>=6, varargout{6} = siteth; end
+  
+  if 0
+    %%
+    b = uicontrol('Parent',f,'Style','slider','Position',[81,54,419,23],...
+                'value',zeta, 'min',0, 'max',1);
+    bgcolor = f.Color;
+    bl1 = uicontrol('Parent',f,'Style','text','Position',[50,54,23,23],...
+                    'String','0','BackgroundColor',bgcolor);
+    bl2 = uicontrol('Parent',f,'Style','text','Position',[500,54,23,23],...
+                    'String','1','BackgroundColor',bgcolor);
+    bl3 = uicontrol('Parent',f,'Style','text','Position',[240,25,100,23],...
+                    'String','Damping Ratio','BackgroundColor',bgcolor);
+  end
 end

@@ -2,15 +2,20 @@ function y = cat_stat_polynomial(x,p)
 % Polynomial expansion and orthogonalization of function x
 % FORMAT y = cat_stat_polynomial(x,p)
 % x   - data matrix
-% p   - order of polynomial [default: 0]
+% p   - order of polynomial [default: 1]
 % 
 % y   - orthogonalized data matrix
 %__________________________________________________________________________
 %
 % cat_stat_polynomial orthogonalizes a polynomial function of order p
-%__________________________________________________________________________
-% Christian Gaser 
-% $Id: cat_stat_polynomial.m 1143 2017-06-14 10:55:48Z gaser $ 
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_stat_polynomial.m 1791 2021-04-06 09:15:54Z gaser $ 
 
 if nargin < 2, p = 1; end
 

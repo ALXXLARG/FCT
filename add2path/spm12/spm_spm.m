@@ -265,13 +265,13 @@ function SPM = spm_spm(SPM)
 % Analysis of fMRI Time-Series Revisited - Again. Worsley KJ, Friston KJ.
 % (1995) NeuroImage 2:173-181.
 %__________________________________________________________________________
-% Copyright (C) 1994-2016 Wellcome Trust Centre for Neuroimaging
+% Copyright (C) 1994-2019 Wellcome Trust Centre for Neuroimaging
 
 % Karl Friston & Guillaume Flandin
-% $Id: spm_spm.m 6842 2016-07-28 09:02:10Z guillaume $
+% $Id: spm_spm.m 7738 2019-12-02 12:45:37Z guillaume $
 
 
-SVNid = '$Rev: 6842 $';
+SVNid = '$Rev: 7738 $';
 
 %-Say hello
 %--------------------------------------------------------------------------
@@ -333,11 +333,13 @@ if spm_mesh_detect(VY)
     if any(ismember(name,'SurfaceID'))
         metadata = metadata(ismember(name,'SurfaceID'));
         metadata = {metadata.name, metadata.value};
+    elseif isfield(g,'faces') && ~isempty(g.faces)
+        metadata = {'SurfaceID', VY(1).fname};
     else
         error('SurfaceID not found in GIfTI''s metadata.');
     end
     if isempty(spm_file(metadata{2},'path'))
-    	metadata{2} = fullfile(spm_file(VY(1).fname,'path'),metadata{2});
+        metadata{2} = fullfile(spm_file(VY(1).fname,'path'),metadata{2});
     end
     SPM.xVol.G = metadata{2};
 else
@@ -551,7 +553,7 @@ for i = 1:numel(xM.VM)
         clear C v x1 x2 x3 M2 y1 y2 y3
     else
         if spm_mesh_detect(xM.VM(i))
-            v = xM.VM(i).private.cdata() > 0;
+            v = full(xM.VM(i).private.cdata) > 0;
         else
             v = spm_mesh_project(gifti(SPM.xVol.G), xM.VM(i)) > 0;
         end
@@ -745,7 +747,10 @@ SPM.swd        = pwd;
 %-Save SPM.mat
 %--------------------------------------------------------------------------
 fprintf('%-40s: %30s','Saving SPM.mat','...writing');                   %-#
-save('SPM.mat','SPM', spm_get_defaults('mat.format'));
+fmt = spm_get_defaults('mat.format');
+s = whos('SPM');
+if s.bytes > 2147483647, fmt = '-v7.3'; end
+save('SPM.mat','SPM', fmt);
 fprintf('%s%30s\n',repmat(sprintf('\b'),1,30),'...done')                %-#
 
 %-Exit

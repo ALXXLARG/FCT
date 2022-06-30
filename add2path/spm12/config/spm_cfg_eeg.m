@@ -3,7 +3,7 @@ function meeg = spm_cfg_eeg
 %__________________________________________________________________________
 % Copyright (C) 2008-2014 Wellcome Trust Centre for Neuroimaging
 
-% $Id: spm_cfg_eeg.m 6878 2016-09-16 07:57:06Z gareth $
+% $Id: spm_cfg_eeg.m 7745 2019-12-03 14:55:56Z gareth $
 
 %--------------------------------------------------------------------------
 % M/EEG preprocessing
@@ -52,7 +52,7 @@ source.tag    = 'source';
 source.name   = 'Source reconstruction';
 source.help   = {'M/EEG source reconstruction.'};
 %source.values = { spm_cfg_eeg_inv_headmodel, spm_cfg_eeg_inv_headmodelhelmet, spm_cfg_eeg_inv_invert, spm_cfg_eeg_inv_invertiter ,spm_cfg_eeg_inv_simulate,spm_cfg_eeg_inv_mix, spm_cfg_eeg_inv_results, spm_cfg_eeg_inv_extract,spm_cfg_eeg_inv_coregshift,spm_cfg_eeg_inv_sensorshift, spm_cfg_eeg_inv_post, spm_cfg_eeg_inv_patchdef, spm_cfg_eeg_inv_prepro, spm_cfg_eeg_inv_priors,spm_cfg_eeg_inv_optimize}; 
-source.values = { spm_cfg_eeg_inv_headmodel, spm_cfg_eeg_inv_headmodelhelmet, spm_cfg_eeg_inv_invert, spm_cfg_eeg_inv_invertiter ,spm_cfg_eeg_inv_simulate,spm_cfg_eeg_inv_mix, spm_cfg_eeg_inv_results, spm_cfg_eeg_inv_extract,spm_cfg_eeg_inv_coregshift,spm_cfg_eeg_inv_sensorshift}; 
+source.values = { spm_cfg_eeg_inv_headmodel, spm_cfg_eeg_inv_headmodelhelmet, spm_cfg_eeg_inv_invert, spm_cfg_eeg_inv_invertiter ,spm_cfg_eeg_inv_simulate,spm_cfg_eeg_inv_mix, spm_cfg_eeg_inv_results, spm_cfg_eeg_inv_extract,spm_cfg_eeg_inv_coregshift,spm_cfg_eeg_inv_sensorshift, spm_cfg_eeg_dipfit, spm_cfg_eeg_momentfit}; 
 
 %--------------------------------------------------------------------------
 % M/EEG Modelling
@@ -72,10 +72,19 @@ meegothr.help   = {'M/EEG Other'};
 meegothr.values = {spm_cfg_eeg_review, spm_cfg_eeg_copy, spm_cfg_eeg_delete}; 
 
 %--------------------------------------------------------------------------
+% OPM
+%--------------------------------------------------------------------------
+meegopm        = cfg_choice;
+meegopm.tag    = 'OPM';
+meegopm.name   = 'OPM Preprocessing';
+meegopm.help   = {'OPM Preprocessing'};
+meegopm.values = {spm_cfg_opm_create,spm_cfg_opm_synth_gradiometer,spm_cfg_opm_epoch_trigger}; 
+
+%--------------------------------------------------------------------------
 % M/EEG
 %--------------------------------------------------------------------------
 meeg         = cfg_choice;
 meeg.tag     = 'meeg';
 meeg.name    = 'M/EEG';
 meeg.help    = {'M/EEG functions.'};
-meeg.values  = {spm_cfg_eeg_convert meegprep meegavg meegimg meegtf source meegmodel meegothr};
+meeg.values  = {spm_cfg_eeg_convert meegprep meegavg meegimg meegtf source meegmodel  meegopm meegothr};

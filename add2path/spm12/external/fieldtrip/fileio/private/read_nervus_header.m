@@ -9,7 +9,7 @@ function output = read_nervus_header(filename)
 %
 % Copyright (C) 2016, Jan Brogger and Joost Wagenaar 
 %
-% This file is part of FieldTrip, see http://www.ru.nl/neuroimaging/fieldtrip
+% This file is part of FieldTrip, see http://www.fieldtriptoolbox.org
 % for the documentation and details.
 %
 %    FieldTrip is free software: you can redistribute it and/or modify
@@ -34,10 +34,7 @@ UNITSIZE = 16;
 ITEMNAMESIZE  = 64;
 
 % ---------------- Opening File------------------
-h = fopen(filename,'rb','ieee-le');
-if h==-1
-    error('Can''t open Nervus EEG file')
-end
+h = fopen_or_error(filename,'rb','ieee-le');
 
 nrvHdr = struct();
 nrvHdr.filename = filename;
@@ -54,10 +51,11 @@ nrvHdr.DynamicPackets = read_nervus_header_dynamicpackets(h, nrvHdr.StaticPacket
 nrvHdr.PatientInfo = read_nervus_header_patient(h, nrvHdr.StaticPackets, nrvHdr.MainIndex);
 nrvHdr.SigInfo = read_nervus_header_SignalInfo(h, nrvHdr.StaticPackets, nrvHdr.MainIndex, ITEMNAMESIZE, LABELSIZE, UNITSIZE);
 nrvHdr.ChannelInfo = read_nervus_header_ChannelInfo(h, nrvHdr.StaticPackets, nrvHdr.MainIndex, ITEMNAMESIZE, LABELSIZE);
-nrvHdr.TSInfo = read_nervus_header_TSInfo(h, nrvHdr.DynamicPackets, nrvHdr.MainIndex, ITEMNAMESIZE, TSLABELSIZE, LABELSIZE);
+nrvHdr.TSInfo = read_nervus_header_TSInfo(nrvHdr.DynamicPackets, TSLABELSIZE, LABELSIZE);
 nrvHdr.Segments = read_nervus_header_Segments(h, nrvHdr.StaticPackets, nrvHdr.MainIndex, nrvHdr.TSInfo);
 nrvHdr.Events = read_nervus_header_events(h, nrvHdr.StaticPackets, nrvHdr.MainIndex);
 nrvHdr.MontageInfo = read_nervus_header_montage(h, nrvHdr.StaticPackets, nrvHdr.MainIndex);
+nrvHdr.MontageInfo2 = read_nervus_header_dynamic_montages(nrvHdr.DynamicPackets);
 
 reference = unique(nrvHdr.Segments(1).refName(cellfun(@length, [nrvHdr.Segments(1).refName])>0));
 if strcmp(reference, 'REF')
@@ -218,11 +216,11 @@ for i = 1:QIIndex.LQi
     QIIndex2(i).misc1 = fread(h,1,'uint32');   %8
     QIIndex2(i).indexIdx = fread(h,1,'uint32'); %12
     QIIndex2(i).misc2 = fread(h,3,'uint32')'; %24
-    QIIndex2(i).sectionIdx = fread(h,1,'uint32');%28
+    QIIndex2(i).sectionIdx = fread(h,1,'uint32'); %28
     QIIndex2(i).misc3 = fread(h,1,'uint32'); %32
     QIIndex2(i).offset = fread(h,1,'uint64'); % 40
-    QIIndex2(i).blockL = fread(h,1,'uint32');%44
-    QIIndex2(i).dataL = fread(h,1,'uint32')';%48
+    QIIndex2(i).blockL = fread(h,1,'uint32'); %44
+    QIIndex2(i).dataL = fread(h,1,'uint32')'; %48
 end
 end
 
@@ -389,7 +387,7 @@ for i = 1:nrValues
     id = fread(h,1,'uint64');
     switch id
         case {7,8}
-            unix_time = (fread(h,1, 'double')*(3600*24)) - 2209161600;% 2208988800; %8
+            unix_time = (fread(h,1, 'double')*(3600*24)) - 2209161600; % 2208988800; %8
             obj.segments(i).dateStr = datestr(unix_time/86400 + datenum(1970,1,1));
             value = datevec( obj.segments(i).dateStr );
             value = value([3 2 1]);
@@ -477,20 +475,37 @@ for i = 1: length(channelInfo)
 end
 end
 
-function [TSInfo] = read_nervus_header_TSInfo(h, DynamicPackets, Index, ITEMNAMESIZE, TSLABELSIZE, LABELSIZE)
+function [TSInfo] = read_nervus_header_TSInfo(DynamicPackets, TSLABELSIZE, LABELSIZE)
 tsPackets = DynamicPackets(strcmp({DynamicPackets.IDStr},'TSGUID'));
 
+if isempty(tsPackets)
+    ft_error(['No TSINFO found']);
+end    
+
+tsPacket = tsPackets(1);
+TSInfo = read_nervus_header_one_TSInfo(tsPacket, TSLABELSIZE, LABELSIZE);
+
 if length(tsPackets) > 1
-    warning(['Multiple TSinfo packets detected; using first instance ' ...
-        ' ac for all segments. See documentation for info.']);
-elseif isempty(tsPackets)
-    warning(['No TSINFO found']);
-else
-    tsPacket = tsPackets(1);
-    
+    allEqual = 1;
+    for i = 2: size(tsPackets,2)
+        nextTsPacket = tsPackets(i);
+        nextTSInfo = read_nervus_header_one_TSInfo(nextTsPacket, TSLABELSIZE, LABELSIZE);       
+        areEqual = compareTsInfoPackets(TSInfo, nextTSInfo);
+        if (areEqual == 0)
+            allEqual = 0;
+            break;
+        end
+    end    
+    if (allEqual == 0)            
+        ft_error('Multiple TSInfo packets found and they are not the same.');
+    end
+end
+end
+
+function [TSInfo] = read_nervus_header_one_TSInfo(tsPacket, TSLABELSIZE, LABELSIZE)    
     TSInfo = struct();
     elems = typecast(tsPacket.data(753:756),'uint32');
-    alloc = typecast(tsPacket.data(757:760),'uint32');
+    %alloc = typecast(tsPacket.data(757:760),'uint32');
     
     offset = 761;
     for i = 1:elems
@@ -518,7 +533,58 @@ else
         offset = offset + 552;
         %disp([num2str(i) ' : ' TSInfo(i).label ' : ' TSInfo(i).activeSensor ' : ' TSInfo(i).refSensor ' : ' num2str(TSInfo(i).samplingRate)]);
     end
+
 end
+
+function areEqual = compareTsInfoPackets(TSInfo1, TSInfo2)    
+    areEqual = 1;
+    if (size(TSInfo1,2) ~= size(TSInfo2,2))
+        areEqual = 0;
+    else
+        for i = 1:size(TSInfo1,2)
+            if (~strcmp(TSInfo1(i).label,TSInfo2(i).label))
+                areEqual = 0;
+                break;
+            end
+            if (~strcmp(TSInfo1(i).activeSensor,TSInfo2(i).activeSensor))
+                areEqual = 0;
+                break;
+            end
+            if (~strcmp(TSInfo1(i).refSensor,TSInfo2(i).refSensor))
+                areEqual = 0;
+                break;
+            end
+            if (TSInfo1(i).lowcut ~= TSInfo2(i).lowcut)
+                areEqual = 0;
+                break;
+            end
+            if (TSInfo1(i).hiCut ~= TSInfo2(i).hiCut)
+                areEqual = 0;
+                break;
+            end
+            if (TSInfo1(i).samplingRate ~= TSInfo2(i).samplingRate)
+                areEqual = 0;
+                break;
+            end
+            if (TSInfo1(i).resolution ~= TSInfo2(i).resolution)
+                areEqual = 0;
+                break;
+            end
+            if (TSInfo1(i).specialMark ~= TSInfo2(i).specialMark)
+                areEqual = 0;
+                break;
+            end
+            if (TSInfo1(i).notch ~= TSInfo2(i).notch)
+                areEqual = 0;
+                break;
+            end
+            if (TSInfo1(i).eeg_offset ~= TSInfo2(i).eeg_offset)
+                areEqual = 0;
+                break;
+            end
+        end
+    end
+        
 end
 
 function [segments] = read_nervus_header_Segments(h, StaticPackets, Index, TSInfo)
@@ -533,13 +599,13 @@ segments = struct();
 for i = 1: nrSegments
     dateOLE = fread(h,1, 'double');
     segments(i).dateOLE = dateOLE;
-    unix_time = (dateOLE*(3600*24)) - 2209161600;% 2208988800; %8
+    unix_time = (dateOLE*(3600*24)) - 2209161600; % 2208988800; %8
     segments(i).dateStr = datestr(unix_time/86400 + datenum(1970,1,1));
     datev = datevec( segments(i).dateStr );
     segments(i).startDate = datev(1:3);
     segments(i).startTime = datev(4:6);
     fseek(h, 8 , 'cof'); %16
-    segments(i).duration = fread(h,1, 'double');%24
+    segments(i).duration = fread(h,1, 'double'); %24
     fseek(h, 128 , 'cof'); %152       
 end
 
@@ -589,7 +655,7 @@ while (pktGUID == evtPktGUID)
     evtDateFraction   = fread(h,1,'double');
     eventMarkers(i).dateOLE = evtDate;
     eventMarkers(i).dateFraction = evtDateFraction;
-    evtPOSIXTime = evtDate*DAYSECS + evtDateFraction - 2209161600;% 2208988800; %8
+    evtPOSIXTime = evtDate*DAYSECS + evtDateFraction - 2209161600; % 2208988800; %8
     eventMarkers(i).dateStr = datestr(evtPOSIXTime/DAYSECS + datenum(1970,1,1),'dd-mmmm-yyyy HH:MM:SS.FFF'); % Save fractions of seconds, as well
     eventMarkers(i).duration  = fread(h,1,'double');
     fseek(h,48,'cof');
@@ -679,3 +745,50 @@ else
 end
 end
 
+
+function [montages] = read_nervus_header_dynamic_montages(DynamicPackets)
+%% Get montages from the dynamic packets  - Jan Brogger - September 2016
+
+montagePackets = DynamicPackets(strcmp({DynamicPackets.IDStr},'DERIVATIONGUID'));
+montages = struct();
+for numMontage = 1:size(montagePackets,2)
+    montagePacket = montagePackets(numMontage);
+    
+    guidmixed = montagePacket.data(1:16);
+    guidnonmixed = [guidmixed(04), guidmixed(03), guidmixed(02), guidmixed(01), ...
+        guidmixed(06), guidmixed(05), guidmixed(08), guidmixed(07), ...
+        guidmixed(09), guidmixed(10), guidmixed(11), guidmixed(12), ...
+        guidmixed(13), guidmixed(15), guidmixed(15), guidmixed(16)];
+    montages(numMontage).guid1 = num2str(guidnonmixed,'%02X');
+        
+    montages(numMontage).packetSize = typecast(montagePacket.data(17:24),'uint64');
+    
+    guidmixed2 = montagePacket.data(25:40);
+    guidnonmixed2 = [guidmixed2(04), guidmixed2(03), guidmixed2(02), guidmixed2(01), ...
+        guidmixed2(06), guidmixed2(05), guidmixed2(08), guidmixed2(07), ...
+        guidmixed2(09), guidmixed2(10), guidmixed2(11), guidmixed2(12), ...
+        guidmixed2(13), guidmixed2(15), guidmixed2(15), guidmixed2(16)];
+    montages(numMontage).guid2 = num2str(guidnonmixed2,'%02X');
+    
+    montages(numMontage).itemName = deblank(cast(montagePacket.data(41:104),'char')');    
+    montages(numMontage).elements = typecast(montagePacket.data(745:748),'uint32');
+    montages(numMontage).alloc = typecast(montagePacket.data(749:752),'uint32');
+    
+    offset = 753;
+    for i=1:montages(numMontage).elements        
+        montages(numMontage).channel(i).name = deblank(cast(montagePacket.data(offset:(offset+127)),'char')');
+        offset = offset + 128;
+        montages(numMontage).channel(i).active = deblank(cast(montagePacket.data(offset:(offset+63)),'char')');
+        offset = offset + 64;
+        montages(numMontage).channel(i).reference = deblank(cast(montagePacket.data(offset:(offset+63)),'char')');
+        offset = offset + 64;
+        montages(numMontage).channel(i).isDerived = montagePacket.data(offset);
+        offset = offset + 1;
+        montages(numMontage).channel(i).isSpecial = montagePacket.data(offset);
+        offset = offset + 1;
+        offset = offset + 256;        
+        offset = offset + 6;
+    end        
+end
+
+end

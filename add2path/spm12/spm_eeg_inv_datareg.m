@@ -1,5 +1,5 @@
 function M1 = spm_eeg_inv_datareg(S)
-% Co-registration of two setse of fiducials according to sets of
+% Co-registration of two sets of fiducials according to sets of
 % corresponding points and (optionally) headshapes.
 % rigid co-registration
 %           1: fiducials based (3 landmarks: nasion, left ear, right ear)
@@ -30,15 +30,11 @@ function M1 = spm_eeg_inv_datareg(S)
 % this is generalized to a full twelve parameter affine mapping (n.b.
 % this might not be appropriate for MEG data).
 %__________________________________________________________________________
-% Copyright (C) 2008 Wellcome Trust Centre for Neuroimaging
+% Copyright (C) 2005-2017 Wellcome Trust Centre for Neuroimaging
 
 % Jeremie Mattout
-% $Id: spm_eeg_inv_datareg.m 3833 2010-04-22 14:49:48Z vladimir $
+% $Id: spm_eeg_inv_datareg.m 7544 2019-03-15 16:20:16Z vladimir $
 
-
-if nargin == 0 || ~isstruct(S)
-    error('Input struct is required');
-end
 
 if ~isfield(S, 'targetfid')
     error('Target fiducials are missing');
@@ -67,11 +63,11 @@ end
 %--------------------------------------------------------------------------
 M1 = spm_eeg_inv_rigidreg(targetfid.fid.pnt', sourcefid.fid.pnt');
 
-sourcefid = ft_transform_headshape(M1, sourcefid);
+sourcefid = ft_transform_geometry(M1, sourcefid);
 
 if S.template
 
-    % constatined affine transform
+    % constrained affine transform
     %--------------------------------------------------------------------------
     aff   = S.template;
     for i = 1:64
@@ -81,7 +77,7 @@ if S.template
         M       = pinv(sourcefid.fid.pnt(:))*targetfid.fid.pnt(:);
         M       = sparse(1:4,1:4,[M M M 1]);
 
-        sourcefid = ft_transform_headshape(M, sourcefid);
+        sourcefid = ft_transform_geometry(M, sourcefid);
 
         M1      = M*M1;
 
@@ -89,7 +85,7 @@ if S.template
         %----------------------------------------------------------------------
         M       = spm_eeg_inv_rigidreg(targetfid.fid.pnt', sourcefid.fid.pnt');
 
-        sourcefid = ft_transform_headshape(M, sourcefid);
+        sourcefid = ft_transform_geometry(M, sourcefid);
 
         M1      = M*M1;
   
@@ -102,10 +98,10 @@ else
 end
 
 
-% Surface matching between the scalp vertices in MRI space and
-% the headshape positions in data space
+% Surface matching between the scalp vertices in MRI space and the
+% headshape positions in data space
 %--------------------------------------------------------------------------
-if  ~isempty(sourcefid.pnt) && S.useheadshape
+if ~isempty(sourcefid.pnt) && S.useheadshape
 
     headshape = sourcefid.pnt;
     scalpvert = targetfid.pnt;
@@ -121,21 +117,26 @@ if  ~isempty(sourcefid.pnt) && S.useheadshape
 
     % intialise plot
     %----------------------------------------------------------------------
-    h    = spm_figure('GetWin','Graphics');
-    clf(h); figure(h)
-    set(h,'DoubleBuffer','on','BackingStore','on');
-    Fmri = plot3(scalpvert(:,1),scalpvert(:,2),scalpvert(:,3),'ro','MarkerFaceColor','r');
-    hold on;
-    Fhsp = plot3(headshape(:,1),headshape(:,2),headshape(:,3),'bs','MarkerFaceColor','b');
-    axis off image
-    drawnow
+    if ~spm('CmdLine')
+        h    = spm_figure('GetWin','Graphics');
+        spm_figure('Select',h);
+        spm_clf(h);
+        Fmri = plot3(scalpvert(:,1),scalpvert(:,2),scalpvert(:,3),'ro','MarkerFaceColor','r');
+        hold on;
+        Fhsp = plot3(headshape(:,1),headshape(:,2),headshape(:,3),'bs','MarkerFaceColor','b');
+        axis off image
+        drawnow
+    else
+        Fmri = [];
+        Fhsp = [];
+    end
 
     % nearest point registration
     %----------------------------------------------------------------------
-    M    = spm_eeg_inv_icp(scalpvert',headshape',targetfid.fid.pnt',sourcefid.fid.pnt',Fmri,Fhsp,aff);
+    M = spm_eeg_inv_icp(scalpvert',headshape',targetfid.fid.pnt',sourcefid.fid.pnt',Fmri,Fhsp,aff);
 
     % transform headshape and eeg fiducials
     %----------------------------------------------------------------------
-    sourcefid = ft_transform_headshape(M, sourcefid);
+    sourcefid = ft_transform_geometry(M, sourcefid);
     M1        = M*M1;
 end

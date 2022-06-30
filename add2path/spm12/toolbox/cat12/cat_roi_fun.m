@@ -6,6 +6,7 @@ function varargout = cat_roi_fun(action,varargin)
 %
 %
 %  Actions:
+%   * exportSample  - estimate mean values inside ROI
 %   * xmlroi2csvtab - convert XML ROI structure to CSV table structure
 %   * csvtab2xmlroi - convert CSV table structure to XML ROI structure
 % 
@@ -31,14 +32,17 @@ function varargout = cat_roi_fun(action,varargin)
 %      .data         = d x 1 structure of measures (field-name = measure-name)
 %       .([SUBMEASURE_]MEASURE) = r x 1 numerical matrix
 % ______________________________________________________________________
-% Robert Dahnke 2016
-% $Id: cat_roi_fun.m 1045 2016-10-24 13:22:21Z gaser $
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_roi_fun.m 1980 2022-03-30 14:40:08Z gaser $
 
   switch action
     case 'exportSample'
       cat_roi_exportSample(varargin{1});
-    %case 'importSample'
-    %  varargout{1} = cat_roi_importSample(varargin{1}); 
     case 'xmlroi2csvtab'
       varargout{1} = cat_roi_xmlroi2csvtab(varargin{1});
     case 'csvtab2xmlroi'
@@ -79,6 +83,7 @@ function [catTAB,catROI] = cat_roi_xmlroi2csvtabtest
   
 end
 
+%_______________________________________________________________________
 function mcsvtab = cat_roi_exportSample(job)
 %% 
 
@@ -89,14 +94,19 @@ function mcsvtab = cat_roi_exportSample(job)
   def.delimiter     = ','; 
   def.point         = '.';
  
+  
   job = cat_io_checkinopt(job,def);
   [px,job.calcroi_name,ee] = spm_fileparts(job.calcroi_name);
   if ~strcmp(ee,'.csv'), job.calcroi_name = [job.calcroi_name ee]; end
-  
+
+  if iscell(job.outdir), job.outdir = job.outdir{1}; end
+
   % create output directory 
   if ~isempty(job.outdir)
     if iscell(job.outdir), job.outdir = job.outdir{1}; end
     if ~exist(job.outdir,'dir'), mkdir(job.outdir); end
+  else
+    job.outdir = pwd;
   end
   
   % first divide data into volume and surface data because they have to be handled separately
@@ -115,6 +125,15 @@ function mcsvtab = cat_roi_exportSample(job)
   for fni=1:numel(FN)
     if isfield(job,FN{fni})
 
+      fprintf('---------------------------------------------------------------------------------------------\n')
+      if strcmp(FN{fni},'catROIs')      
+        fprintf('The mean volume values in mL are saved to %s\n',job.outdir);
+      else
+        fprintf('The mean surface values are saved to %s\n',job.outdir);
+      end
+      fprintf('---------------------------------------------------------------------------------------------\n')
+
+
       catROI   = cat_io_xml(job.(FN{fni}));
 
       % we expect the same atlases and measures for all subjects!
@@ -123,7 +142,7 @@ function mcsvtab = cat_roi_exportSample(job)
       
         % call old function 
         if ~isfield(catROI(1).(atlases{ai}),'names')
-          cat_stat_ROI(job);
+          cat_stat_ROI_old(job);
           if fni == 1 
             if ~strcmp(job.point,'.');
               disp('Option for decimal point is not supported for old xml-files. Files are saved using ''.'' as decimal point.');
@@ -137,6 +156,7 @@ function mcsvtab = cat_roi_exportSample(job)
         
         roinames = catROI(1).(atlases{ai}).names(:);
         measures = fieldnames(catROI(1).(atlases{ai}).data);
+        
       
         %%
         for mi=1:numel(measures)
@@ -166,25 +186,24 @@ function mcsvtab = cat_roi_exportSample(job)
             mcsvtab.(FN{fni}).(atlases{ai}).(measures{mi}) = mcsvtab.(FN{fni}).(atlases{ai})';
           end
 
-          %% write result
-          cat_io_csv(fullfile(job.outdir,...
-            sprintf('%s_%s_%s_%s.csv',job.calcroi_name,FN{fni},atlases{ai},measures{mi})),...
-            mcsvtab.(FN{fni}).(atlases{ai}).(measures{mi}),'','',struct('delimiter',job.delimiter,'komma',job.point));
+          %% write result if measures are not beginning with "I" (intensity) or "T" (volume thickness)
+          if ~strcmp(measures{mi}(1),'T') && ~strcmp(measures{mi}(1),'I')
+            csv_file = fullfile(job.outdir,sprintf('%s_%s_%s.csv',job.calcroi_name,atlases{ai},measures{mi}));
+            fprintf('Save %s.\n',csv_file);
+            cat_io_csv(csv_file,...
+              mcsvtab.(FN{fni}).(atlases{ai}).(measures{mi}),'','',struct('delimiter',job.delimiter,'komma',job.point));
+          end
 
         end
- 
       end
-
     end    
   end
 end
 
-function cat_stat_ROI(p)
-%cat_stat_ROI to save mean values inside ROI for many subjects
-%
 %_______________________________________________________________________
-% Christian Gaser
-% $Id: cat_roi_fun.m 1045 2016-10-24 13:22:21Z gaser $
+function cat_stat_ROI_old(p)
+%cat_stat_ROI_old to save mean values inside ROI for many subjects (old xml-files)
+%
 
   n_data = length(p.roi_xml);
 
@@ -200,13 +219,13 @@ function cat_stat_ROI(p)
     end
   end
 
-  save_ROI(p,roi_vol);
-  save_ROI(p,roi_surf);
+  save_ROI_old(p,roi_vol);
+  save_ROI_old(p,roi_surf);
 end
 
 %_______________________________________________________________________
-function save_ROI(p,roi)
-% save mean values inside ROI
+function save_ROI_old(p,roi)
+% save mean values inside ROI (old xml-files)
 
   % ROI measures to search for
   ROI_measures = char('Vgm','Vwm','Vcsf','mean_thickness');
@@ -280,10 +299,7 @@ function save_ROI(p,roi)
   end
 end
 
-function varargout = cat_roi_importSample(varargin)
-
-end
-
+%_______________________________________________________________________
 function csvtab = cat_roi_xmlroi2csvtab(varargin)
 % This function convertes the CAT XML ROI structure to the CAT CSV tables.
 
@@ -360,6 +376,7 @@ function csvtab = cat_roi_xmlroi2csvtab(varargin)
   end
 end
 
+%_______________________________________________________________________
 function xmlroi = cat_roi_csvtab2xmlroi(varargin)
 % This function converts the CAT CSV tables to the CAT XML ROI structure.
   [CATrel, CATver] = cat_version;

@@ -1,16 +1,49 @@
 function cat_vol_slice_overlay_ui
-%__________________________________________________________________________
-% Christian Gaser
-% $Id: cat_vol_slice_overlay_ui.m 785 2015-11-26 09:14:24Z gaser $
+% Wrapper to cat_vol_slice_overlay
+% Call help for slice_overlay for any additional help
+% 
+% Additional fields to slice_overlay:
+% OV.name       - char array of filenames for overlay that can be interactively
+%                 selected
+% OV.slices_str - char array of slice values (e.g. '-32:2:20')
+%                 use empty string for automatically estimating slices with
+%                 local maxima
+% OV.xy         - define number of columns and rows
+%                 comment this out for interactive selection or set the values
+%                 to [Inf 1] for using one row and automatically estimate number
+%                 of columns or use [1 Inf] for using one column
+% OV.atlas      - define atlas for labeling
+%                 comment this out for interactive selection
+%                 or use 'none' for no atlas information
+% OV.save       - save result as png/jpg/pdf/tif
+%                 comment this out for interactive selection or use '' for not 
+%                 saving any file or use just file extension (png/jpg/pdf/tif) to 
+%                 automatically estimate filename to save
+% OV.FS         - normalized font size (default 0.08)
+% OV.name_subfolder
+%               - if result is saved as image use up to 2 subfolders to add their 
+%                 names to the filename (default 1)
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_vol_slice_overlay_ui.m 1934 2022-01-28 09:48:48Z gaser $
 
-OV.reference_image = fullfile(spm('dir'),'toolbox','cat12','templates_1.50mm','Template_T1_IXI555_MNI152.nii');
-OV.reference_range = [0.2 1.0];                         % intensity range for reference image
-OV.opacity = Inf;                                      % transparence value for overlay (<1)
+% use default T1 from Shooting
+%OV.reference_image = fullfile(spm('dir'),'toolbox','cat12','templates_MNI152NLin2009cAsym','Template_T1.nii');
+% or its masked version
+OV.reference_image = fullfile(spm('dir'),'toolbox','cat12','templates_MNI152NLin2009cAsym','Template_T1_masked.nii');
+
+OV.reference_range = [0.2 1.0];                        % intensity range for reference image
+OV.opacity = Inf;                                      % transparency value for overlay (<1)
 OV.cmap    = jet;                                      % colormap for overlay
 
-% name of files
-OV.name = char(fullfile(spm('dir'),'tpm','TPM.nii,1'),...
-               fullfile(spm('dir'),'tpm','labels_Neuromorphometrics.nii'));
+% char array of file names
+OV.name = char(fullfile(cat_get_defaults('extopts.pth_templates'),'Template_4_GS.nii,1'),...
+               fullfile(cat_get_defaults('extopts.pth_templates'),'cobra.nii'));
                 
 % range for each file
 % Use range 0..0 if you want to autoscale range.
@@ -21,31 +54,59 @@ OV.name = char(fullfile(spm('dir'),'tpm','TPM.nii,1'),...
 % The log-scaled values are calculated by -log10(1-p):
 % p-value       -log10(1-P)
 %  0.1           1
-%  0.05          1.3
+%  0.05          1.30103 (-log10(0.05))
 %  0.01          2
 %  0.001         3
 %  0.0001        4
 
 % Number of fields in range should be the same as number of files (see above)
-% or give one field, which is valid for all.
-% Be carefule: intensities below the lower range are not shown!
-OV.range   =[[0.5 1]; [0.5 1]];
+% or define one field, which is valid for all.
+% Be careful: intensities below the lower range are not shown!
+OV.range   =[[0.5 1]; [126 139]];
 
 % OV.func can be used to set the image to defined values (e.g. NaN) for the given range
-%OV.func = 'i1(i1>-1.3 & i1<1.3)=NaN;';
+%OV.func = 'i1(i1>log10(0.05) & i1<-log10(0.05))=NaN;';
 
 % selection of slices and orientations
 % if OV.slices_str is an empty string then slices with local maxima are estimated automatically
-OV.slices_str = char('','-30:2:30','-20:5:45');
-OV.transform = char('axial','sagittal','coronal');
+OV.slices_str = char('','0:2:36','-40:5:-5');
+OV.transform  = char('axial','sagittal','coronal');
 
 % define output format of slices
 OV.labels.format = '%3.1f';
 
-% Comment this out if you don't wish slice labels
-%OV.labels = [];
+% define number of columns and rows
+% comment this out for interactive selection
+%OV.xy = [3 5];
 
-% Comment this out if you don't wish colorbar
-%OV.cbar = [];
+% or use Inf to automatically estimate the number of necessray rows or columns
+OV.xy = [Inf 1]; % use one row and automatically estimate number of columns
 
+% save result as png/jpg/pdf/tif
+% comment this out for interactive selection or use 'none' for not 
+% saving any file or use just file extension (png/jpg/pdf/tif) to automatically
+% estimate filename to save
+OV.save = 'png';
+
+% if result is saved as image use up to 2 subfolders to add their names to the filename (default 1)
+OV.name_subfolder = 2;
+
+% Comment this out if you wish slice overview
+OV.overview = [];
+
+% Comment this out if you wish slice labels
+OV.labels = [];
+
+% Comment this out if you wish colorbar
+OV.cbar = [];
+
+% Normalized font size
+OV.FS = 0.08;
+
+% define atlas for labeling
+% comment this out for interactive selection
+% or use 'none' for skipping atlas information
+OV.atlas = 'cat12_neuromorphometrics';
+
+% call slice overlay with that settings
 cat_vol_slice_overlay(OV)

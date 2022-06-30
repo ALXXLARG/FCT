@@ -1,4 +1,12 @@
 function cat_tst_staple_multilabels(P,Pm,Q,verb)
+% ______________________________________________________________________
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Id: cat_tst_staple_multilabels.m 1791 2021-04-06 09:15:54Z gaser $
 
   if nargin == 0
     P = spm_select(Inf,'image','Select images from different experts');

@@ -1,6 +1,11 @@
-/*
- * Christian Gaser
- * $Id: MrfPrior.c 745 2015-10-09 14:58:04Z gaser $ 
+/* ______________________________________________________________________
+ *
+ * Christian Gaser, Robert Dahnke
+ * Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+ * Departments of Neurology and Psychiatry
+ * Jena University Hospital
+ * ______________________________________________________________________
+ * $Id: MrfPrior.c 1921 2021-12-13 13:31:32Z dahnke $ 
  *
  */
 
@@ -25,7 +30,7 @@
 #include <mex.h> 
 #endif
 
-void MrfPrior(unsigned char *label, int n_classes, double *alpha, double *beta, int init, int *dims)
+void MrfPrior(unsigned char *label, int n_classes, double *alpha, double *beta, int init, int *dims, int verb)
 {
   int i, j, x, y, z;
   int fi, fj;
@@ -79,10 +84,10 @@ void MrfPrior(unsigned char *label, int n_classes, double *alpha, double *beta, 
   }
 
   /* evaluate alphas */
-  printf("MRF priors: alpha ");
+  if ( verb == 1 ) printf("MRF priors: alpha ");
   for (i = 0; i < n_classes; i++) {
-    if (init == 0) alpha[i] /= n; else alpha[i] = 1.0;
-    printf("%3.3f ", alpha[i]);
+    if (init == 0) alpha[i] /= (double) n; else alpha[i] = 1.0;
+    if ( verb == 1 ) printf("%3.3f ", alpha[i]);
   }
 
   /* compute beta */
@@ -98,7 +103,7 @@ void MrfPrior(unsigned char *label, int n_classes, double *alpha, double *beta, 
               if (color[i][f[0]][f[1]][f[2]][f[3]] < TH_COLOR ||
                   color[j][f[0]][f[1]][f[2]][f[3]] < TH_COLOR) continue;
 	      
-              L = log(((double) color[i][f[0]][f[1]][f[2]][f[3]])/
+              L = log(((double) color[i][f[0]][f[1]][f[2]][f[3]]) /
                        (double) color[j][f[0]][f[1]][f[2]][f[3]]);
 	      
               if (i == 0) 
@@ -109,14 +114,14 @@ void MrfPrior(unsigned char *label, int n_classes, double *alpha, double *beta, 
                 fj = 6 - f[0] - f[1] - f[2] - f[3];
               else fj = f[j-1];
 
-              XX += (fi-fj)*(fi-fj);
-              YY += L*(fi-fj);
+              XX += (double) (fi-fj)*(fi-fj);
+              YY += L * ( (double) (fi-fj));
   }
   
   /* weighting of beta was empirically estimated using brainweb data with different noise levels
      because old beta estimation was not working */
   beta[0] = XX/YY;
-  printf("\t beta %3.3f\n", beta[0]);
+  if ( verb == 1 ) printf("\t beta %3.3f\n", beta[0]);
   fflush(stdout);
 }
 

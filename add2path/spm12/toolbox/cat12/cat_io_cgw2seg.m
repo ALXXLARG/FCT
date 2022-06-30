@@ -8,7 +8,13 @@ function varargout=cat_io_cgw2seg(c,g,w,opt)
 %   d    .. delete old files [0|1], default = 0;
 %
 % ______________________________________________________________________
-% $Revision: 1139 $  $Date: 2017-06-12 21:54:51 +0200 (Mo, 12 Jun 2017) $
+%
+% Christian Gaser, Robert Dahnke
+% Structural Brain Mapping Group (http://www.neuro.uni-jena.de)
+% Departments of Neurology and Psychiatry
+% Jena University Hospital
+% ______________________________________________________________________
+% $Revision: 1791 $  $Date: 2021-04-06 11:15:54 +0200 (Di, 06 Apr 2021) $
 
   if ~exist('opt','var'); opt = struct(); end
   
