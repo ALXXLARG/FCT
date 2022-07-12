@@ -7,6 +7,7 @@ root_dir = inptpara.rootDir;
 projID = inptpara.projID;
 pathi = inptpara.path01;
 patho = inptpara.path02;
+subID = inptpara.subID;
 
 if ~isdeployed
     addpath(genpath([root_dir,'\add2path\spm12']));
@@ -76,11 +77,28 @@ for i=3:length(list) % multiple scans
     % check whether there is JSON file (BLSA-no; OASIS3-yes; ADNI23-most yes)
     % "SliceTiming" in JSON file indicates slice order
     % if there is no such info, then keep using default slice order
+     json_flag = 0;
     if isfile([patho,'/preprocess/FunImg/' list(i).name '/' tmp.name(1:end-7) '.json'])
         js = jsondecode(fileread([patho,'/preprocess/FunImg/' list(i).name '/' tmp.name(1:end-7) '.json']));
         % check whether there is SliceTiming filed in JSON file (OASIS-part yes)
         if isfield(js, 'SliceTiming')
-            slorder = round(js.SliceTiming/TR*slnum) + 1;
+            [~, slorder] = sort(js.SliceTiming); 
+            slorder = slorder'; json_flag = 1;
+        end
+    end
+
+    % if there is no SliceTiming in JSON, try to find it in summary CSV file
+    if strcmp(projID, 'ADNI_23') && json_flag == 0 
+        % find slice order in spreadsheet 
+        T = readtable([path '/MAYOADIRL_MRI_FMRI_NFQ_05_09_22_modifiedByGao_ADNI23.csv']);
+        T_sid = T.RID;   T_vid = T.VISCODE0;  T_vid1 = T.VISCODE00; 
+        T_st = T.SLICETIMING;
+        sID = str2double(subID(7:10));    vID = str2double(subID(17:end));
+        ind = find(T_sid==sID & (T_vid==vID | T_vid1==vID), 1);
+        if ~isempty(ind)
+            st_n = str2double(split(T_st{ind}, '_')); % array of slice timing
+            [~, so_i] = sort(st_n); 
+            slorder = so_i'; 
         end
     end
 
@@ -88,6 +106,14 @@ for i=3:length(list) % multiple scans
 
     Cfg.TimePoints=tpnum; % set number of time points
     Cfg.TR=TR; % set TR
+   % set whether to do slice timing (skip slice timing if TR<1)
+    if strcmp(projID, 'ADNI_23') && TR < 1
+        Cfg.IsSliceTiming = 0; %  
+        disp('No Slice Timing Correction for Multi-Band');
+    else
+        Cfg.IsSliceTiming = 1; % 
+        disp(['slice order= ' num2str(slorder)]);
+    end
     Cfg.SliceTiming.SliceNumber=slnum; % set number of slices
     Cfg.SliceTiming.SliceOrder=slorder; % set slice order
     Cfg.SliceTiming.ReferenceSlice=round(slnum/2); % set reference slice
@@ -105,10 +131,23 @@ for i=3:length(list) % multiple scans
     tmp = dir([patho,'/preprocess/T1Img/' list(i).name '/*.nii']);
     copyfile( [patho,'/preprocess/T1Img/' list(i).name '/' tmp.name], ...
         [patho,'/preprocess/CatNormalization/' list(i).name '/T1.nii']);
-    copyfile( [patho,'/preprocess/FunImgARCD/' list(i).name '/Detrend_4DVolume.nii'],...
-        [patho,'/preprocess/CatNormalization/' list(i).name '/Detrend_4DVolume.nii']);
-    copyfile( [patho,'/preprocess/FunImgARCDF/' list(i).name '/Filtered_4DVolume.nii'],...
-        [patho,'/preprocess/CatNormalization/' list(i).name '/Filtered_4DVolume.nii']);
+
+    if exist([patho,'/preprocess/FunImgRCD/'], 'dir')
+        copyfile( [patho,'/preprocess/FunImgRCD/' list(i).name '/Detrend_4DVolume.nii'],...
+            [patho,'/preprocess/CatNormalization/' list(i).name '/Detrend_4DVolume.nii']);
+        copyfile( [patho,'/preprocess/FunImgRCDF/' list(i).name '/Filtered_4DVolume.nii'],...
+            [patho,'/preprocess/CatNormalization/' list(i).name '/Filtered_4DVolume.nii']);
+    else
+        copyfile( [patho,'/preprocess/FunImgARCD/' list(i).name '/Detrend_4DVolume.nii'],...
+            [patho,'/preprocess/CatNormalization/' list(i).name '/Detrend_4DVolume.nii']);
+        copyfile( [patho,'/preprocess/FunImgARCDF/' list(i).name '/Filtered_4DVolume.nii'],...
+            [patho,'/preprocess/CatNormalization/' list(i).name '/Filtered_4DVolume.nii']);
+    end
+
+%     copyfile( [patho,'/preprocess/FunImgARCD/' list(i).name '/Detrend_4DVolume.nii'],...
+%         [patho,'/preprocess/CatNormalization/' list(i).name '/Detrend_4DVolume.nii']);
+%     copyfile( [patho,'/preprocess/FunImgARCDF/' list(i).name '/Filtered_4DVolume.nii'],...
+%         [patho,'/preprocess/CatNormalization/' list(i).name '/Filtered_4DVolume.nii']);
 
     % Segmentation based on T1, output = tissue-masks
     load([path,'/saved_cat12.mat'],'matlabbatch');
@@ -138,11 +177,27 @@ for i=3:length(list) % multiple scans
     matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{3,1} =[patho,'/preprocess/CatNormalization/' list(i).name '/mri/p2T1.nii,1'];
     matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{4,1} =[patho,'/preprocess/CatNormalization/' list(i).name '/mri/p3T1.nii,1'];
     matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{5,1} =[patho,'/preprocess/CatNormalization/' list(i).name '/T1.nii,1'];
-    matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{6,1} =[patho,'/preprocess/Results/ALFF_FunImgARCD/ALFFMap_' list(i).name '.nii,1'];
-    matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{7,1} =[patho,'/preprocess/Results/DegreeCentrality_FunImgARCDF/DegreeCentrality_PositiveBinarizedSumBrainMap_' list(i).name '.nii,1'];
-    matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{8,1} =[patho,'/preprocess/Results/DegreeCentrality_FunImgARCDF/DegreeCentrality_PositiveWeightedSumBrainMap_' list(i).name '.nii,1'];
-    matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{9,1} =[patho,'/preprocess/Results/fALFF_FunImgARCD/fALFFMap_' list(i).name '.nii,1'];
-    matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{10,1}=[patho,'/preprocess/Results/ReHo_FunImgARCDF/ReHoMap_' list(i).name '.nii,1'];
+
+    if exist([patho,'/preprocess/FunImgRCD/'], 'dir')
+        matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{6,1} =[patho,'/preprocess/Results/ALFF_FunImgRCD/ALFFMap_' list(i).name '.nii,1'];
+        matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{7,1} =[patho,'/preprocess/Results/DegreeCentrality_FunImgRCDF/DegreeCentrality_PositiveBinarizedSumBrainMap_' list(i).name '.nii,1'];
+        matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{8,1} =[patho,'/preprocess/Results/DegreeCentrality_FunImgRCDF/DegreeCentrality_PositiveWeightedSumBrainMap_' list(i).name '.nii,1'];
+        matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{9,1} =[patho,'/preprocess/Results/fALFF_FunImgRCD/fALFFMap_' list(i).name '.nii,1'];
+        matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{10,1}=[patho,'/preprocess/Results/ReHo_FunImgRCDF/ReHoMap_' list(i).name '.nii,1'];
+    else
+        matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{6,1} =[patho,'/preprocess/Results/ALFF_FunImgARCD/ALFFMap_' list(i).name '.nii,1'];
+        matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{7,1} =[patho,'/preprocess/Results/DegreeCentrality_FunImgARCDF/DegreeCentrality_PositiveBinarizedSumBrainMap_' list(i).name '.nii,1'];
+        matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{8,1} =[patho,'/preprocess/Results/DegreeCentrality_FunImgARCDF/DegreeCentrality_PositiveWeightedSumBrainMap_' list(i).name '.nii,1'];
+        matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{9,1} =[patho,'/preprocess/Results/fALFF_FunImgARCD/fALFFMap_' list(i).name '.nii,1'];
+        matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{10,1}=[patho,'/preprocess/Results/ReHo_FunImgARCDF/ReHoMap_' list(i).name '.nii,1'];
+    end
+
+%     matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{6,1} =[patho,'/preprocess/Results/ALFF_FunImgARCD/ALFFMap_' list(i).name '.nii,1'];
+%     matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{7,1} =[patho,'/preprocess/Results/DegreeCentrality_FunImgARCDF/DegreeCentrality_PositiveBinarizedSumBrainMap_' list(i).name '.nii,1'];
+%     matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{8,1} =[patho,'/preprocess/Results/DegreeCentrality_FunImgARCDF/DegreeCentrality_PositiveWeightedSumBrainMap_' list(i).name '.nii,1'];
+%     matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{9,1} =[patho,'/preprocess/Results/fALFF_FunImgARCD/fALFFMap_' list(i).name '.nii,1'];
+%     matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{10,1}=[patho,'/preprocess/Results/ReHo_FunImgARCDF/ReHoMap_' list(i).name '.nii,1'];
+
     for nn=1:tpnum
         disp(nn);
         matlabbatch{1,1}.spm.spatial.normalise.write.subj.resample{nn+10,      1}=[patho,'/preprocess/CatNormalization/' list(i).name '/Detrend_4DVolume.nii,',num2str(nn)];

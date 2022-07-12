@@ -2642,11 +2642,15 @@ if (AutoDataProcessParameter.IsCovremove==1) && (strcmpi(AutoDataProcessParamete
                     fname = [AutoDataProcessParameter.DataProcessDir,filesep,'Masks',filesep,'SegmentationMasks',filesep,'FunSpace_ThrdMask_',AutoDataProcessParameter.SubjectID{i},'_CSF_ven_erd0.nii'];
                     y_Write(maskVentricle,maskHeader,fname);
                     
-                    % Erode if ventricle mask is too large (> 20cm3)
+                    % Keep eroding if ventricle mask is too large (> 20cm3)
                     while vVentricle >= 10
                         cnt = cnt + 1;
+                        maskBackup = maskVentricle; % backup of current mask in case it becomes zero after erosion using sphere
                         maskVentricle = imerode(maskVentricle>0, strel("sphere", 1));
-                        nVentricle = sum(maskVentricle(:)); 
+                        if ~any(maskVentricle(:)) % if nothing left after erosion
+                            maskVentricle = imerode(maskBackup>0, strel("disk", 1));
+                        end
+                        nVentricle = sum(maskVentricle(:));
                         vVentricle = round(vVox*nVentricle); % in cm3
                         disp(['Ventricle (eroded ' num2str(cnt) '): ' num2str(nVentricle) ' voxels (>' num2str(T) ') ' num2str(vVentricle) ' cm3']); % Threshold
                         fname = [AutoDataProcessParameter.DataProcessDir,filesep,'Masks',filesep,'SegmentationMasks',filesep,'FunSpace_ThrdMask_',AutoDataProcessParameter.SubjectID{i},'_CSF_ven_erd' num2str(cnt) '.nii'];
