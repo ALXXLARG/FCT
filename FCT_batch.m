@@ -259,11 +259,11 @@ for i = 1 : length(list1)
 
     %%% Step 0: preprocess the fmri
     %     GMnii  = load_nii(strcat(path01,'\brainmask.nii'));
-    GM  = niftiread(strcat(patho,'\brainmask.nii'));
+    GM  = spm_vol(strcat(patho,'\brainmask.nii')); GM = spm_read_vols(GM);
     GM = ones(size(GM)).*(GM>0);
     GM = flip(GM,1);
     %     fMRnii = load_nii(strcat(rootDir,list1(i).name,'\rest1.nii'));
-    fMR = niftiread(strcat([patho '\results\'],list1(i).name,'\rmni_Detrend_4DVolume.nii'));
+    fMR = spm_vol(strcat([patho '\results\'],list1(i).name,'\rmni_Detrend_4DVolume.nii')); fMR = spm_read_vols(fMR);
     fMR = flip(fMR,1);
     xcell_mask = GM;
     xcell = fMR;
