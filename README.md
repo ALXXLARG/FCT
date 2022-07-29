@@ -10,7 +10,7 @@ Configuration file (inptpara.mat) which includes:
 
 root_dir: root directory of the project
 
-projID: ID of the related dataset be used
+projID: ID of the related dataset used
 
 pathi: path for input directory
 
