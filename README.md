@@ -6,9 +6,7 @@ This spider is currently designed for three databases (ADNI_23, BLSA and OASIS-3
 
 ## Inputs: 
 
-Configuration file (inptpara.mat)
-
-includes: 
+Configuration file (inptpara.mat) which includes: 
 
 root_dir: root directory of the project
 
