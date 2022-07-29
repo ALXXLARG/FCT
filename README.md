@@ -1,6 +1,6 @@
 # FCT
 
-This spider will preprocess fMRI data as well as corresponding T1 data, and calculated functional correlational tensor (FCT) for each subject.
+This spider will preprocess fMRI data as well as corresponding T1 data, and calculate functional correlational tensor (FCT) for each subject.
 
 This spider is currently designed for three databases (ADNI_23, BLSA and OASIS-3). The pipeline is currently being modified. There will be updates afterwards.
 
