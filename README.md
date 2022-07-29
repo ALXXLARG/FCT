@@ -1,8 +1,8 @@
 # FCT
 
-This spider will preprocess fMRI data as well as corresponding T1 data, extract mean time-courses of each predefined ROI and compute the correlation matrices between white matter ROIs and gray matter ROIs. Please see Gao’s publications [1, 2] for more details. The spider will also compute FALFF, ALFF and ReHo maps. 
+This spider will preprocess fMRI data as well as corresponding T1 data, and calculated functional correlational tensor (FCT) for each subject.
 
-This XNAT spider is currently designed for three databases (ADNI_23, BLSA and OASIS-3) which are proposed to be analyzed in white matter reanalysis project (PI: Dr. Gore and Dr. Landman). 
+This spider is currently designed for three databases (ADNI_23, BLSA and OASIS-3). The pipeline is under progress. There will be updates afterwards.
 
 ## Inputs: 
 
