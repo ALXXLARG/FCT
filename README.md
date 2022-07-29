@@ -18,7 +18,7 @@ patho: path for output directory
 
 ## Output:
 
-FCT tensors saved as 5D mat
+FCT tensor saved as 5D mat
 
 # References
 
